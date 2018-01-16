@@ -31,6 +31,9 @@ namespace NITest
 {
     class Program
     {
+        static List<byte[,]> imglist = new List<byte[,]>();
+        static Mat modeimage_barrier = new Mat(new System.Drawing.Size(1280, 1024), Emgu.CV.CvEnum.DepthType.Cv8U, 1);
+        static byte[,] imagemode = new byte[1024, 1280];
 
         public class CamData
         {
@@ -47,7 +50,6 @@ namespace NITest
                 pix_for_stim = stmpix;
             }
         }
-
 
         static void Main(string[] args)
         {
@@ -104,8 +106,7 @@ namespace NITest
             int light_location_Y = Convert.ToInt32(lightloc_Y);
             Console.WriteLine("Enter Experiment Type  ");
             String exp_string = Console.ReadLine();
-            String exp_type = "";
-           
+            String exp_type = "";   
             String camerawindow = "Camera Window";
             CvInvoke.NamedWindow(camerawindow);
             int frameWidth = 1280;
@@ -124,18 +125,19 @@ namespace NITest
             Mat cvimage = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
             Mat modeimage_barrier_roi =  new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
             Mat modeimage = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
-            Mat modeimage_barrier = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
+//            Mat modeimage_barrier = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
             Mat maxproj_cv = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
+            AutoResetEvent mode_reset = new AutoResetEvent(false);
             AutoResetEvent event1 = new AutoResetEvent(true);
             AutoResetEvent event2 = new AutoResetEvent(false);
             MCvMoments COM = new MCvMoments();
             byte[,] data_2D = new byte[frameHeight, frameWidth];
             byte[,] data_2D_roi = new byte[roidim, roidim];
             byte[,] imagemode_nobarrier = new byte[frameHeight, frameWidth];
-            byte[,] imagemode = new byte[frameHeight, frameWidth];
+
             byte[,] maxprojimage = new byte[frameHeight, frameWidth];      
             ImaqBuffer image = null;
-            List<byte[,]> imglist = new List<byte[,]>();
+//            List<byte[,]> imglist = new List<byte[,]>();
             ImaqBufferCollection buffcollection = _session.CreateBufferCollection((int)bufferCount,ImaqBufferCollectionType.VisionImage); 
             _session.RingSetup(buffcollection, 0, false);
             _session.Acquisition.AcquireAsync();
@@ -188,6 +190,7 @@ namespace NITest
                     imglist = GetImageList(_session, 500, 10);
                     maxprojimage = FindMaxProjection(imglist);
                     maxproj_cv.SetTo(maxprojimage);
+                    imglist.Clear();
                     CvInvoke.Imshow(camerawindow, maxproj_cv);
                     CvInvoke.WaitKey(0);
             }
@@ -310,6 +313,11 @@ namespace NITest
             List<int> phasebounds = new List<int>();
             while (true)
             {
+                if (mode_reset.WaitOne(0))
+                {
+                    imglist.Clear();
+                    mode_reset.Set();
+                }
                 image = _session.Acquisition.Extract(j, out buff_out);
                 data_2D = image.ToPixelArray().U8;
                 byte[] stim_pixel_readout = new byte[100];
@@ -369,7 +377,7 @@ namespace NITest
                     if (experiment.experiment_phase > experiment_phase)
                     {
                         experiment_phase = experiment.experiment_phase;
-                        phasebounds.Add(xycounter);                        
+                        phasebounds.Add(xycounter);
                     }
                 }
 // PROBABLY MAKE THIS SO IT DOESNT DRAW DURING A STIMULUS
@@ -386,7 +394,15 @@ namespace NITest
                         CvInvoke.Circle(cvimage, experiment.current_barrier_loc, barrier.height / 2, new MCvScalar(255, 0, 0), 3);
                     }
                     CvInvoke.Imshow(camerawindow, cvimage);
-                    CvInvoke.WaitKey(1);
+                    CvInvoke.WaitKey(1);                    
+                    imglist.Add(data_2D);
+//                    ModeWrapper(imglist, mode_reset);
+                    if(imglist.LongCount() == 500)
+                    {
+                        //                        var modethread = new Thread(ModeWrapper(imglist, mode_reset));
+                        var modethread = new Thread(() => ModeWrapper(imglist, mode_reset));
+                        modethread.Start();
+                    }
                     if (experiment.experiment_complete)
                     {
                         break;
@@ -542,8 +558,6 @@ namespace NITest
                 roicol = 0;
             }
             return roi;
-
-
         }
 
         static MCvPoint2D64f CenterOfMass(Mat image, Mat background, uint framenum)
@@ -730,6 +744,19 @@ namespace NITest
                 mymat.CopyTo(tempmat);
             handle.Free();
             return pixeldata[row * column];            
+        }
+
+        //new funcction that wraps Findmode, but changes the mode variable of the NItest class when it finishes. 
+        // have a separate mode variable that is reserved for an update by the mode thread. when WaitOne(0) is true, indicating that 
+        // the Autoreset event has changed, this means that the thread is complete and you can switch the result from the separate mode
+        // variable into imagemode, which is the mainline mode variable. otherwise, you could just hack together a non WaitOne / Autreset 
+        // solution that simply updates the mode in a thread based on your wrapper function. 
+
+        public static void ModeWrapper(List<byte[,]> md_images, AutoResetEvent md_reset)
+        {            
+            List<byte[,]> first120 = md_images.Take(500).ToList();
+            imagemode = FindMode(first120);
+            modeimage_barrier.SetTo(imagemode);            
         }
 
         static byte[,] FindMode(List<byte[,]> backgroundimages)
