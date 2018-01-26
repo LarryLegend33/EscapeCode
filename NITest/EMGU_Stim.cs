@@ -30,7 +30,7 @@ namespace EMGU_Stimuli
     {
         public Point current_barrier_loc, virtual_barrier_center,fish_center, barrier_center,projcenter_camcoords, tankcenter;
         public volatile bool start_align, experiment_running, alignment_complete, centering_success, minefield, minefield_control, darkness, memory, stim_in_progress, motor_closed, experiment_complete, pre_escape;
-        public volatile int trialnumber, tankwidth, barrier_radius,templatewidth,threshold_radius,threshold_multiplier, number_of_trials, stim_pixel_readout, freerun_mins, escape_mins, crossing_thresh, experiment_phase;
+        public volatile int trialnumber, tankwidth, barrier_radius,templatewidth,threshold_radius,threshold_multiplier, number_of_trials, stim_pixel_readout, freerun_mins, escape_mins, crossing_thresh, experiment_phase, walltrial;
         public volatile string experiment_type, experiment_directory;
         float looming_diam, looming_size_thresh, growth_rate;
         public Mat roi;
@@ -46,7 +46,7 @@ namespace EMGU_Stimuli
         public List<Point> barrier_position_list;
         BufferBlock<NITest.Program.CamData> pipe_buffer;
 
-        public RecordAndStim(AutoResetEvent event_1, AutoResetEvent event_2,String stim_type, BufferBlock<NITest.Program.CamData> buffblock)
+        public RecordAndStim(AutoResetEvent event_1, AutoResetEvent event_2, String stim_type, BufferBlock<NITest.Program.CamData> buffblock)
         {
             stim_in_progress = false;
             experiment_complete = false;
@@ -55,12 +55,13 @@ namespace EMGU_Stimuli
             barrier_radius_list = new List<int>();
             //Write a new function that just displays gray or white. this function will look for nearness to all barriers in barrier_position_list then transfer to taps or looming, setting the barrier_center and barrier_radius based on which barrier the fish encountered for the escape stimuli. 
             pre_escape = true;
+            walltrial = 1
             number_of_trials = 10;
             threshold_multiplier = 3;
             threshold_radius = 40;
-            freerun_mins = 10;
-            escape_mins = 30;
-            crossing_thresh = 4;
+            freerun_mins = 5;
+            escape_mins = 60;
+            crossing_thresh = 2;
             experiment_phase = 0;
             // CHANGING THESE 3 THINGS CHANGES WHETHER THE PROGRAM CALIBRATES OR NOT. 
             alignment_complete = true;
@@ -240,7 +241,7 @@ namespace EMGU_Stimuli
                     Console.WriteLine("Radial Gradient On");
                     centering_success = RadialGradient(150);
                     Console.WriteLine("Centering Success Returned");
- //                   centering_success = OmrStimulus();
+                  //  centering_success = OmrStimulus();
                     EmptyBuffer();
                 }                
                 if (centering_success) 
@@ -353,7 +354,7 @@ namespace EMGU_Stimuli
                         }
                         continue;
                     }
-                    else if (experiment_timer.ElapsedMilliseconds > (escape_mins) * 1000 * 60)
+                    else if ((experiment_timer.ElapsedMilliseconds > (escape_mins) * 1000 * 60) || (trialnumber > 10))
                     {
 
                         if (minefield_control || experiment_phase == 3)
@@ -408,13 +409,15 @@ namespace EMGU_Stimuli
                 }
                 else
                 {
-                    Console.WriteLine("Timeout Trial " + trialnumber);
-                    if (mymotor.Position == 2)
-                    {
-                        mymotor.SetPosition(1, 1000);
-                    }
-                    experiment_complete = true; 
-                    break;
+                    bool nearwall = WallTap(walltrial);
+                    if(nearwall) {walltrial++;}
+                    //Console.WriteLine("Timeout Trial " + trialnumber);                    
+                    //if (mymotor.Position == 2)
+                    //{
+                    //    mymotor.SetPosition(1, 1000);
+                    //}
+                    //experiment_complete = true; 
+                    //break;
                 }
 
             }
@@ -433,7 +436,6 @@ namespace EMGU_Stimuli
             CvInvoke.Ellipse(img, alignment_rect, black, 5);
             CvInvoke.Imshow(win1, img); 
             CvInvoke.WaitKey(0);
-
         }
 
         public void Calibration_Templates()
@@ -480,14 +482,7 @@ namespace EMGU_Stimuli
                 CvInvoke.Imshow(win1, img);
                 CvInvoke.WaitKey(1);
             }
-            if (!darkness)
-            {
-                if(mymotor.Position == 2)
-                {
-                    mymotor.SetPosition(1, 1000);
-                }
-            }
-            if (memory && !motor_closed)
+            else if (memory && !motor_closed)
             {
                 for (int pixval = 150; pixval > 0; pixval--)
                 {
@@ -508,9 +503,13 @@ namespace EMGU_Stimuli
             }
             else
             {
+                if (mymotor.Position == 2)
+                {
+                    mymotor.SetPosition(1, 1000);
+                }
                 img.SetTo(background_color);
                 CvInvoke.Imshow(win1, img);
-                CvInvoke.WaitKey(1); // Ten Second minimum timeout
+                CvInvoke.WaitKey(1); // Ten Second minimum timeout? if so implement here
             }
             EmptyBuffer();
             List<Point> fishlocations = new List<Point>();
@@ -605,6 +604,7 @@ namespace EMGU_Stimuli
             int thresh_distance = 18;
             int center_thresh = 200;
             int return_roi = 350;
+            int wall_thresh = 440;
             double vmag = 0;
             if(barrier_or_center == "barrier")
             {
@@ -619,7 +619,17 @@ namespace EMGU_Stimuli
                 }
 
             }
-
+            else if(barrier_or_center == "wall")
+            {
+                if (VectorMagFromCenter(xypoint) > wall_thresh)
+                {
+                    return true;
+                }
+                else
+                {
+                    return false;
+                }
+            }
             else if(barrier_or_center == "center")
             {
                 if (VectorMagFromCenter(xypoint) < center_thresh)
@@ -821,6 +831,117 @@ namespace EMGU_Stimuli
 
         }
 
+        private bool WallTap(int trialnum)
+        {
+            List<Point> coordlist = new List<Point>();
+            List<byte[]> stim_pixels = new List<byte[]>();
+            List<Tuple<uint, uint>> buffer_id = new List<Tuple<uint,uint>>();
+            int framecount = 0;
+            int proximity_frames = 100;
+            string vidstring = "";
+            string stimstring = "";
+            string tapstring = "";
+            string buffstring = "";
+            int lastframe = 2000;
+            if (trialnum < 10)
+            {
+                vidstring = experiment_directory + "/wall_tap0" + trialnum + experiment_type + ".AVI";
+            }
+            else
+            {
+                vidstring = experiment_directory + "/wall_tap" + trialnum + experiment_type + ".AVI";
+            }
+            VideoWriter tapmovie = new VideoWriter(vidstring, 0, 500, new Size(80, 80), false);
+            while (true)
+            {
+                var camdata = pipe_buffer.Receive();
+                if (framecount == 0)
+                {
+                    if (CheckROI(camdata.fishcoord, "center"))
+                    {
+                        return false;
+                    }
+
+                    if (!CheckROI(camdata.fishcoord, "wall"))
+                    {
+                        framecount = 0;
+                        continue;
+                    }
+                }
+                stim_in_progress = true;
+                coordlist.Add(camdata.fishcoord);
+                stim_pixels.Add(camdata.pix_for_stim);
+                tapmovie.Write(camdata.roi);
+                Tuple<uint, uint> temptup = new Tuple<uint, uint>(camdata.jay, camdata.buffernumber);
+                buffer_id.Add(temptup);                
+                framecount++;
+                if (framecount == proximity_frames)
+                {
+                    if (!CheckROI(camdata.fishcoord, "wall"))
+                    {
+                        framecount = 0;
+                        coordlist.Clear();
+                        stim_in_progress = false;
+                        stim_pixels.Clear();
+                        buffer_id.Clear();
+                        tapmovie.Dispose();
+                        File.Delete(vidstring);
+                        tapmovie = new VideoWriter(vidstring, 0, 500, new Size(80, 80), false);
+                        continue;
+                    }
+                    else {
+                        pyboard.WriteLine("escape_rig.taponce(240)\r");
+                    }
+
+                }
+                if (framecount == lastframe)
+                {
+                    stim_in_progress = false;
+                    break;
+                  }
+                }
+
+            tapmovie.Dispose();
+            if(trialnumber < 10)
+            {
+                tapstring = experiment_directory + "/walltap_trial0" + trialnumber.ToString() + experiment_type + ".txt";
+                stimstring = experiment_directory + "/wallstim_trial0" + trialnumber.ToString() + experiment_type + ".txt";
+                buffstring = experiment_directory + "/wallbuff_trial0" + trialnumber.ToString() + experiment_type + ".txt";
+            }
+            else
+            {
+                tapstring = experiment_directory +" /walltap_trial" + trialnumber.ToString() + experiment_type + ".txt";
+                stimstring = experiment_directory + "/wallstim_trial" + trialnumber.ToString() + experiment_type + ".txt";
+                buffstring = experiment_directory + "/wallbuff_trial" + trialnumber.ToString() + experiment_type + ".txt";
+
+            }
+            using (StreamWriter sr = new StreamWriter(tapstring))
+            {
+                foreach (Point fishpoint in coordlist)
+                {
+                    sr.WriteLine(fishpoint.ToString());
+                }
+            }
+            using (StreamWriter sr = new StreamWriter(stimstring))
+            {
+                foreach (byte[] pix in stim_pixels)
+                {
+                    foreach (int pixel in pix)
+                    {
+                        sr.WriteLine(pixel.ToString());
+                    }                    
+                }
+            }
+            using (StreamWriter sr = new StreamWriter(buffstring))
+            {
+                foreach (Tuple<uint,uint> buff in buffer_id)
+                {
+                    sr.WriteLine("{0}\t{1}", buff.Item1, buff.Item2);
+                }
+            }
+            return true;
+
+        }
 
         private void LightsOut()
         {            
@@ -1120,11 +1241,10 @@ namespace EMGU_Stimuli
             Stopwatch omr_clock = new Stopwatch();
             bool omr_successful = false;
             omr_clock.Start();
-
             int circle_width = diam_outer_circle;
             while (true)
             {
-                if (omr_clock.ElapsedMilliseconds > 600000)
+                if (omr_clock.ElapsedMilliseconds > 300000)
                 {
                     omr_successful = false;
                     break;       

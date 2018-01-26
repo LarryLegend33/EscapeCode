@@ -34,6 +34,7 @@ namespace NITest
         static List<byte[,]> imglist = new List<byte[,]>();
         static Mat modeimage_barrier = new Mat(new System.Drawing.Size(1280, 1024), Emgu.CV.CvEnum.DepthType.Cv8U, 1);
         static byte[,] imagemode = new byte[1024, 1280];
+        static AutoResetEvent mode_reset = new AutoResetEvent(false);
 
         public class CamData
         {
@@ -127,7 +128,6 @@ namespace NITest
             Mat modeimage = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
 //            Mat modeimage_barrier = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
             Mat maxproj_cv = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
-            AutoResetEvent mode_reset = new AutoResetEvent(false);
             AutoResetEvent event1 = new AutoResetEvent(true);
             AutoResetEvent event2 = new AutoResetEvent(false);
             MCvMoments COM = new MCvMoments();
@@ -315,11 +315,22 @@ namespace NITest
             {
                 if (mode_reset.WaitOne(0))
                 {
+                    Console.WriteLine("Clearing Imagelist");
                     imglist.Clear();
-                    mode_reset.Set();
+                    mode_reset.Reset();
                 }
                 image = _session.Acquisition.Extract(j, out buff_out);
-                data_2D = image.ToPixelArray().U8;
+                try
+                {
+                    data_2D = image.ToPixelArray().U8;
+                }
+                catch(NationalInstruments.Vision.VisionException)
+                {
+                    continue;
+                }
+
+                
+
                 byte[] stim_pixel_readout = new byte[100];
                 for (int pix = 0; pix < 100; pix++)
                 {
@@ -394,12 +405,12 @@ namespace NITest
                         CvInvoke.Circle(cvimage, experiment.current_barrier_loc, barrier.height / 2, new MCvScalar(255, 0, 0), 3);
                     }
                     CvInvoke.Imshow(camerawindow, cvimage);
-                    CvInvoke.WaitKey(1);                    
-                    imglist.Add(data_2D);
-//                    ModeWrapper(imglist, mode_reset);
-                    if(imglist.LongCount() == 500)
+                    CvInvoke.WaitKey(1);
+                    byte[,] mode_frame = new byte[frameHeight, frameWidth];
+                    Buffer.BlockCopy(data_2D, 0, mode_frame, 0, data_2D.Length);
+                    imglist.Add(mode_frame);
+                    if (imglist.LongCount() == 500)
                     {
-                        //                        var modethread = new Thread(ModeWrapper(imglist, mode_reset));
                         var modethread = new Thread(() => ModeWrapper(imglist, mode_reset));
                         modethread.Start();
                     }
@@ -474,7 +485,6 @@ namespace NITest
                 else
                 {
                     height = bounding_rect.Height;
-
                 }
 //                Console.WriteLine(height);
                 if (height < 60 && height > 8)
@@ -504,7 +514,8 @@ namespace NITest
                                 continue;
                             }
                         }
-                        if (VectorMag(contourCOM, tc) > 405)
+                        if (VectorMag(contourCOM, tc) > 450)
+//this tells the algorithm not to look for fish outside the tank. 
                         {
                             continue;
                         }
@@ -753,10 +764,12 @@ namespace NITest
         // solution that simply updates the mode in a thread based on your wrapper function. 
 
         public static void ModeWrapper(List<byte[,]> md_images, AutoResetEvent md_reset)
-        {            
+        {
+            Console.WriteLine("ModeWrapper Called");
             List<byte[,]> first120 = md_images.Take(500).ToList();
             imagemode = FindMode(first120);
-            modeimage_barrier.SetTo(imagemode);            
+            modeimage_barrier.SetTo(imagemode);
+            mode_reset.Set();
         }
 
         static byte[,] FindMode(List<byte[,]> backgroundimages)
@@ -771,10 +784,10 @@ namespace NITest
                     int background_number = 0;
                     foreach (byte[,] background in backgroundimages)
                     {
-                        if (rowind == colind && rowind % 100 == 0)
-                        {
-                            Console.WriteLine(background[rowind, colind]); // This gives pixel vals of a line down the diagonal of the images for all images in modelist. //Values are unique indicating that the copy method is working.  
-                        }
+                   //     if (rowind == colind && rowind % 100 == 0)
+                     //   {
+                    //        Console.WriteLine(background[rowind, colind]); // This gives pixel vals of a line down the diagonal of the images for all images in modelist. //Values are unique indicating that the copy method is working.  
+                     //   }
                         pixelarray[background_number] = background[rowind, colind];
                         // get mode of this. enter it as the value in output. 
                         background_number++;
