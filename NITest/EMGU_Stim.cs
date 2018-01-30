@@ -55,7 +55,7 @@ namespace EMGU_Stimuli
             barrier_radius_list = new List<int>();
             //Write a new function that just displays gray or white. this function will look for nearness to all barriers in barrier_position_list then transfer to taps or looming, setting the barrier_center and barrier_radius based on which barrier the fish encountered for the escape stimuli. 
             pre_escape = true;
-            walltrial = 1
+            walltrial = 1;
             number_of_trials = 10;
             threshold_multiplier = 3;
             threshold_radius = 40;
@@ -212,6 +212,14 @@ namespace EMGU_Stimuli
             }
           }
    
+
+// THIS FUNCTION IS AN ABJECT MESS. No need to stop the experiment if the fish is in the middle. Who cares. 
+// Also, alternate light and darkness trials. 
+        public void EntrainLoom(int direction)
+        {
+            // this function will repeatedly deliver looming stimuli when the fish is in the middle of the tank to one or the other direction. 
+            return;
+        }
         
         public void StartStim()
         {
@@ -264,6 +272,7 @@ namespace EMGU_Stimuli
                         Console.WriteLine(number_of_crossings.ToString());
                         //   continue;
                     }
+// This gets called if the fish is in the center for more than 5 minutes. 
                     else if (still_in_ROI == 0)
                     {
                         Console.WriteLine("Timeout Trial " + trialnumber);
@@ -551,22 +560,7 @@ namespace EMGU_Stimuli
                     trial_clock.Restart();
                 }
             }
-            string gray_string = "";
-            if(trialnumber < 10)
-            {
-                gray_string = experiment_directory + "/fishcoords_gray_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-            }
-            else
-            {
-                gray_string = experiment_directory + "/fishcoords_gray_trial" + trialnumber.ToString() + experiment_type + ".txt";
-            }
-            using (StreamWriter sr = new StreamWriter(gray_string))
-            {
-                foreach (Point fishpoint in fishlocations)
-                {
-                    sr.WriteLine(fishpoint.ToString());
-                }
-            }            
+            WriteCoordinateFile("/fishcoords_gray_trial", fishlocations);
             return 2;
         }
             
@@ -731,12 +725,7 @@ namespace EMGU_Stimuli
             {
                 return false;
             }
-
-
-
-
-
-            }
+        }
 
         private void Tap()
         {
@@ -747,20 +736,11 @@ namespace EMGU_Stimuli
             int proximity_frames = 100;
             string vidstring = "";
             string stimstring = "";
-            string tapstring = "";
             string buffstring = "";
-            if (trialnumber < 10)
-            {
-                vidstring = experiment_directory + "/tapmovie0" + trialnumber + experiment_type + ".AVI";
-            }
-            else
-            {
-                vidstring = experiment_directory + "/tapmovie" + trialnumber + experiment_type + ".AVI";
-            }
+            vidstring = experiment_directory + "/tapmovie" + trialnumber.ToString("D2") + experiment_type + ".AVI";
             VideoWriter tapmovie = new VideoWriter(vidstring, 0, 500, new Size(80, 80), false);          
             while (true)
             {
-                //               Console.WriteLine(framecount);
                 stim_in_progress = true;
                 var camdata = pipe_buffer.Receive();
                 coordlist.Add(camdata.fishcoord);
@@ -790,26 +770,9 @@ namespace EMGU_Stimuli
                 }
             }
             tapmovie.Dispose();
-            if(trialnumber < 10)
-            {
-                tapstring = experiment_directory + "/tapresponse_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-                stimstring = experiment_directory + "/stimulus_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-                buffstring = experiment_directory + "/buffid_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-            }
-            else
-            {
-                tapstring = experiment_directory +" /tapresponse_trial" + trialnumber.ToString() + experiment_type + ".txt";
-                stimstring = experiment_directory + "/stimulus_trial" + trialnumber.ToString() + experiment_type + ".txt";
-                buffstring = experiment_directory + "/buffid_trial" + trialnumber.ToString() + experiment_type + ".txt";
-
-            }
-            using (StreamWriter sr = new StreamWriter(tapstring))
-            {
-                foreach (Point fishpoint in coordlist)
-                {
-                    sr.WriteLine(fishpoint.ToString());
-                }
-            }
+            stimstring = experiment_directory + "/stimulus_trial" + trialnumber.ToString("D2") + experiment_type + ".txt";
+            buffstring = experiment_directory + "/buffid_trial" + trialnumber.ToString("D2") + experiment_type + ".txt";
+            WriteCoordinateFile("/tapresponse_trial", coordlist);
             using (StreamWriter sr = new StreamWriter(stimstring))
             {
                 foreach (byte[] pix in stim_pixels)
@@ -840,17 +803,9 @@ namespace EMGU_Stimuli
             int proximity_frames = 100;
             string vidstring = "";
             string stimstring = "";
-            string tapstring = "";
             string buffstring = "";
             int lastframe = 2000;
-            if (trialnum < 10)
-            {
-                vidstring = experiment_directory + "/wall_tap0" + trialnum + experiment_type + ".AVI";
-            }
-            else
-            {
-                vidstring = experiment_directory + "/wall_tap" + trialnum + experiment_type + ".AVI";
-            }
+            vidstring = experiment_directory + "/wall_tap" + trialnum.ToString("D2") + experiment_type + ".AVI";
             VideoWriter tapmovie = new VideoWriter(vidstring, 0, 500, new Size(80, 80), false);
             while (true)
             {
@@ -900,28 +855,10 @@ namespace EMGU_Stimuli
                     break;
                   }
                 }
-
             tapmovie.Dispose();
-            if(trialnumber < 10)
-            {
-                tapstring = experiment_directory + "/walltap_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-                stimstring = experiment_directory + "/wallstim_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-                buffstring = experiment_directory + "/wallbuff_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-            }
-            else
-            {
-                tapstring = experiment_directory +" /walltap_trial" + trialnumber.ToString() + experiment_type + ".txt";
-                stimstring = experiment_directory + "/wallstim_trial" + trialnumber.ToString() + experiment_type + ".txt";
-                buffstring = experiment_directory + "/wallbuff_trial" + trialnumber.ToString() + experiment_type + ".txt";
-
-            }
-            using (StreamWriter sr = new StreamWriter(tapstring))
-            {
-                foreach (Point fishpoint in coordlist)
-                {
-                    sr.WriteLine(fishpoint.ToString());
-                }
-            }
+            stimstring = experiment_directory + "/wallstim_trial" + trialnumber.ToString("D2") + experiment_type + ".txt";
+            buffstring = experiment_directory + "/wallbuff_trial" + trialnumber.ToString("D2") + experiment_type + ".txt";
+            WriteCoordinateFile("/walltap_trial", coordlist);
             using (StreamWriter sr = new StreamWriter(stimstring))
             {
                 foreach (byte[] pix in stim_pixels)
@@ -1003,14 +940,7 @@ namespace EMGU_Stimuli
         {
             string vidstring = "";
             // GENERATE LISTS OF TIMES FOR EACH POINT ACQUIRED. 
-            if (trialnumber < 10)
-            {
-                vidstring = experiment_directory + "/loom_movie0" + trialnumber + experiment_type + ".AVI";
-            }
-            else
-            {
-                vidstring = experiment_directory + "/loom_movie" + trialnumber + experiment_type + ".AVI";
-            }
+            vidstring = experiment_directory + "/loom_movie" + trialnumber.ToString("D2") + experiment_type + ".AVI";
             VideoWriter tapmovie = new VideoWriter(vidstring, 0, 500, new Size(80, 80), false);          
             List<Tuple<uint, uint>> buffer_id = new List<Tuple<uint,uint>>();
             MCvScalar gray = new Bgr(150, 150, 150).MCvScalar;
@@ -1036,14 +966,7 @@ namespace EMGU_Stimuli
                 isvirtual = true;
             }
             string barrier_string = "";
-            if(trialnumber < 10)
-            {
-                barrier_string = experiment_directory + "/barriervarbs_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-            }
-            else
-            {
-                barrier_string = experiment_directory + "/barriervarbs_trial" + trialnumber.ToString() + experiment_type + ".txt";
-            }
+            barrier_string = experiment_directory + "/barriervarbs_trial0" + trialnumber.ToString("D2") + experiment_type + ".txt";
             using (StreamWriter barrier_varbs = new StreamWriter(barrier_string))
             {
                 barrier_varbs.WriteLine(barrier_center_proj.ToString());
@@ -1093,30 +1016,11 @@ namespace EMGU_Stimuli
                 }
             }
             looming_diam = 1;
-
-            string escapestring = "";
             string stimstring = "";
             string buffstring = "";
-            if (trialnumber < 10)
-            {
-                escapestring = experiment_directory + "/looming_fishcoords_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-                stimstring = experiment_directory + "/looming_stimcoords_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-                buffstring = experiment_directory + "/looming_buffID_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-            }
-            else
-            {
-                escapestring = experiment_directory + "/looming_fishcoords_trial" + trialnumber.ToString() + experiment_type + ".txt";
-                stimstring = experiment_directory + "/looming_stimcoords_trial" + trialnumber.ToString() + experiment_type + ".txt";
-                buffstring = experiment_directory + "/looming_buffID_trial" + trialnumber.ToString() + experiment_type + ".txt";
-            }
-
-            using (StreamWriter sr = new StreamWriter(escapestring))
-            {
-                foreach (Point fishpoint in fishlocations)
-                {
-                    sr.WriteLine(fishpoint.ToString());
-                }
-            }
+            stimstring = experiment_directory + "/looming_stimcoords_trial" + trialnumber.ToString("D2") + experiment_type + ".txt";
+            buffstring = experiment_directory + "/looming_buffID_trial" + trialnumber.ToString("D2") + experiment_type + ".txt";
+            WriteCoordinateFile("/looming_fishcoords_trial", fishlocations);
             using (StreamWriter sr2 = new StreamWriter(stimstring))
             {
                 foreach (PointF stimpoint in stimlocations)
@@ -1164,7 +1068,6 @@ namespace EMGU_Stimuli
             bool phototaxis_successful = false;
             phototaxis_clock.Start();
             trial_clock.Start();
-         //   bool first_pass = true;
             while (true)
             {               
                 var camdata = pipe_buffer.Receive();
@@ -1176,40 +1079,15 @@ namespace EMGU_Stimuli
                 if (trial_clock.ElapsedMilliseconds > 5) //record at 200 Hz
                 {                    
                     fishlocations.Add(camdata.fishcoord);
-               //     if (CheckROI(fish_center,"barrier"))
                     if (CheckROI(camdata.fishcoord,"center"))
                     {
-              //          img.SetTo(new MCvScalar(maxluminance, maxluminance, maxluminance));
-              //          CvInvoke.Imshow(win1, img);
-              //          CvInvoke.WaitKey(1);
                         phototaxis_successful = true;
                         break;
                     }
-                    //if (first_pass)
-                    //{
-                    //    CvInvoke.Imshow(win1, radial_grad);
-                    //    CvInvoke.WaitKey(1);
-                    //    first_pass = false;
-                    //}
                     trial_clock.Restart();
                 }
             }
-            string photostring = "";
-            if(trialnumber < 10)
-            {
-                photostring = experiment_directory + "/fishcoords_ptax_trial0" + trialnumber.ToString() + experiment_type + ".txt";
-            }
-            else
-            {
-                photostring = experiment_directory + "/fishcoords_ptax_trial" + trialnumber.ToString() + experiment_type + ".txt";
-            }
-            using (StreamWriter sr = new StreamWriter(photostring))
-            {
-                foreach (Point fishpoint in fishlocations)
-                {
-                    sr.WriteLine(fishpoint.ToString());
-                }
-            }
+            WriteCoordinateFile("/fishcoords_ptax_trial", fishlocations);
             return phototaxis_successful;
         }
 
@@ -1217,6 +1095,18 @@ namespace EMGU_Stimuli
         {
             var camdata = pipe_buffer.Receive();
             while (pipe_buffer.TryReceive(out camdata)) {}
+        }
+
+        private void WriteCoordinateFile(string file_id, List<Point> coordinate_list)
+        {
+            string file_string = experiment_directory + file_id + trialnumber.ToString("D2") + experiment_type + ".txt";
+            using (StreamWriter sr = new StreamWriter(file_string))
+            {
+                foreach (Point coord in coordinate_list)
+                {
+                    sr.WriteLine(coord.ToString());
+                }
+            }
         }
 
         private bool OmrStimulus()

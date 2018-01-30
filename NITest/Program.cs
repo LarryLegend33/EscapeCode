@@ -324,8 +324,9 @@ namespace NITest
                 {
                     data_2D = image.ToPixelArray().U8;
                 }
-                catch(NationalInstruments.Vision.VisionException)
+                catch(NationalInstruments.Vision.VisionException e)
                 {
+                    Console.WriteLine(e);
                     continue;
                 }
 
@@ -769,7 +770,7 @@ namespace NITest
             List<byte[,]> first120 = md_images.Take(500).ToList();
             imagemode = FindMode(first120);
             modeimage_barrier.SetTo(imagemode);
-            mode_reset.Set();
+            md_reset.Set();
         }
 
         static byte[,] FindMode(List<byte[,]> backgroundimages)
