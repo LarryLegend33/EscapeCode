@@ -40,13 +40,15 @@ namespace NITest
         public class CamData
         {
             public Point fishcoord;
+            public ContourProperties fishcont;
             public Mat roi;
             public uint buffernumber, jay;
             public byte[] pix_for_stim;
-            public CamData(Mat roi_input, Point fishXY, uint buffer, uint j_, byte[] stmpix)
+            public CamData(Mat roi_input, Point fishXY, ContourProperties cont, uint buffer, uint j_, byte[] stmpix)
             {
                 jay = j_;
                 fishcoord = fishXY;
+                fishcont = cont;
                 roi = roi_input;
                 buffernumber = buffer;
                 pix_for_stim = stmpix;
@@ -59,42 +61,22 @@ namespace NITest
             // Note that if you want to do halfmoon or stonehenge trials, place halfmoon and stonehenge in the center of the tank. 
             // Fill their center with a barrier for the first mode. Then take the barrier out and take the mode again. Use the smallest barrier possible (so the fish can get close to the center) and, like in nb trials, get rid of the tracking restriction on barriers  
 
-            TextFieldParser parser = new TextFieldParser(@"c:/Users/Deadpool/Desktop/EscapeExperimentGenerator/lightdark_experiment.csv");
-            {
-                parser.TextFieldType = FieldType.Delimited;
-                parser.SetDelimiters(",");                
-            }
-            if (!parser.EndOfData)
-            {
-                string trial = parser.ReadLine();
-                string[] trial_params = trial.Split(',');
-                Console.WriteLine(trial_params[0]);
-            }
-            
-
             var options = new DataflowBlockOptions();
             options.BoundedCapacity = 10;
             var pipe_buffer = new BufferBlock<CamData>(options);
             bool foundfish = false;
-            int tankcenter_x = 640;
-            int tankcenter_y = 512;
             Point tank_center = new Point
             {
-                X = tankcenter_x,
-                Y = tankcenter_y,
+                X = 640,
+                Y = 512,
             };
             int roidim = 80;
             string camera_id = "img0"; //this is the ID of the NI-IMAQ board in NI MAX. 
             var _session = new ImaqSession(camera_id);
-
-            ////this should be a correctly sized buffer (nPixel*pixel_size, i.e. 1 byte). Usually rows will be 4-byte aligned in memory
-            ////so IFF the width is not dividable 
-            //            by four, the size will need to be padded. Done for memory efficiency, often called Stride vs. Width
             bool halfmoon = false;
             bool stonehenge = false;
             bool minefield = false;
             bool minefield_control = false;
-            bool memory = false;
             Console.WriteLine("Enter FishID   ");
             String fishid = Console.ReadLine();
             String exp_directory = "C:/Users/Deadpool/Desktop/Results/" + fishid;
@@ -125,13 +107,17 @@ namespace NITest
             int light_location_Y = Convert.ToInt32(lightloc_Y);
             Console.WriteLine("Enter Experiment Type  ");
             String exp_string = Console.ReadLine();
-            if(exp_string == "n")
+            if (exp_string == "n")
             {
                 minefield_control = true;
             }
-            else if(exp_string == "b")
+            else if (exp_string == "b")
             {
                 minefield = true;
+            }
+            else if (exp_string == "t")
+            {
+                
             }
             String camerawindow = "Camera Window";
             CvInvoke.NamedWindow(camerawindow);
@@ -168,7 +154,7 @@ namespace NITest
             // OMRandLoom experiment = new OMRandLoom(event1, event2);
             //     DimAndStim experiment = new DimAndStim(true);           
             // DarkFlash experiment = new DarkFlash();
-            RecordAndStim experiment = new RecordAndStim(event1, event2,"tap", pipe_buffer);
+            RecordAndStim experiment = new RecordAndStim(event1, event2, pipe_buffer);
             experiment.experiment_directory = exp_directory;
 
             var stimthread = new Thread(experiment.StartStim);
@@ -236,7 +222,7 @@ namespace NITest
 // Here you have just added barriers to the tank. Now get a new mode that contains the barriers for use in background subtraction to find fish 
 // and for localizing barriers. 
            
-            if (stonehenge || minefield || memory)
+            if (stonehenge || minefield)
             {
                 imglist = GetImageList(_session, 5000, 400);
                 imagemode = FindMode(imglist);
@@ -255,7 +241,7 @@ namespace NITest
                 modeimage_barrier.SetTo(imagemode_nobarrier);
                 modeimage_barrier.Save(exp_directory + "/background_" + exp_string + ".tif");
 
-                barrierlist = GenerateVirtualBarriers(experiment.tankwidth, tankcenter_x, tankcenter_y);
+                barrierlist = GenerateVirtualBarriers(experiment.tankwidth, tank_center.X, tank_center.Y);
                 for(int ind = 0; ind < barrierlist.Count; ind++)
                 {
                     experiment.barrier_position_list.Add(barrierlist[ind].center);
@@ -369,7 +355,7 @@ namespace NITest
                         //     cv_roi.SetTo(gray); //in movie indicates that program lost the fish on this frame
                     }
                 }              
-                CamData camdat = new CamData(cv_roi, f_center, buff_out, j, stim_pixel_readout);
+                CamData camdat = new CamData(cv_roi, f_center, fishcontour, buff_out, j, stim_pixel_readout);
                 pipe_buffer.Post(camdat);
                 if (j % 10 == 0)
                 {
