@@ -21,6 +21,7 @@ using Thorlabs.MotionControl.GenericMotorCLI.Settings;
 using Thorlabs.MotionControl.FilterFlipper;
 using System.Threading.Tasks.Dataflow;
 using NITest;
+using Microsoft.VisualBasic.FileIO;
 
 
 namespace EMGU_Stimuli
@@ -30,8 +31,9 @@ namespace EMGU_Stimuli
     {
         public Point current_barrier_loc, virtual_barrier_center,fish_center, barrier_center,projcenter_camcoords, tankcenter;
         public volatile bool start_align, experiment_running, alignment_complete, centering_success, minefield, minefield_control, darkness, memory, stim_in_progress, motor_closed, experiment_complete, pre_escape, start_state_light;
-        public volatile int trialnumber, tankwidth, barrier_radius,templatewidth,threshold_radius,threshold_multiplier, number_of_trials, stim_pixel_readout, freerun_mins, escape_mins, crossing_thresh, experiment_phase, walltrial;
+        public volatile int trialnumber, tankwidth, barrier_radius,templatewidth,threshold_radius,threshold_multiplier, number_of_trials, stim_pixel_readout, freerun_mins, escape_mins, crossing_thresh, experiment_phase, walltrial, barrier_ind;
         public volatile string experiment_type, experiment_directory;
+        string param_string;
         float looming_diam, looming_size_thresh, growth_rate;
         public Mat roi;
         PointF stimcenter;
@@ -39,16 +41,39 @@ namespace EMGU_Stimuli
         Mat img;
         Stopwatch experiment_timer = new Stopwatch();
         FilterFlipper mymotor;
-        String serialnum = "";
         String win1,stimtype;
         AutoResetEvent event1, event2;
         SerialPort pyboard = new SerialPort("COM6",115200);
         public List<int> barrier_radius_list;
         public List<Point> barrier_position_list;
         BufferBlock<NITest.Program.CamData> pipe_buffer;
+        TextFieldParser param_parser;
 
-        public RecordAndStim(AutoResetEvent event_1, AutoResetEvent event_2, String stim_type, BufferBlock<NITest.Program.CamData> buffblock)
-        {    
+        public RecordAndStim(AutoResetEvent event_1, AutoResetEvent event_2, BufferBlock<NITest.Program.CamData> buffblock)
+        {
+
+            if(exp_type == )
+            {
+                param_string = "lightdark_experiment.csv";
+            }
+            else if(exp_type == )
+            {
+                param_string = "control_experiment.csv";
+            }
+            else if(exp_type == )
+            {
+                param_string = "loom_training.csv";
+            }
+            param_parser = new TextFieldParser(@"c:/Users/Deadpool/Desktop/EscapeExperimentGenerator/" + param_string);
+            { 
+                param_parser.TextFieldType = FieldType.Delimited;
+                param_parser.SetDelimiters(",");
+            }
+            
+
+
+
+
             stim_in_progress = false;
             experiment_complete = false;
             pipe_buffer = buffblock;
@@ -75,7 +100,6 @@ namespace EMGU_Stimuli
             //
 
             roi = new Mat(new Size(80,80), Emgu.CV.CvEnum.DepthType.Cv8U, 1);
-            stimtype = stim_type;
             centering_success = true;
             tankcenter = new Point
             {
@@ -111,20 +135,11 @@ namespace EMGU_Stimuli
             growth_rate = 1.01f;
             event1 = event_1;
             event2 = event_2;
-            if (minefield)
-            {
-                start_state_light = true;
-            }
-            else if(darkness)
-            {
-                start_state_light = false;
-            }
             projcenter_camcoords = new Point
             {
                 X = 100,
                 Y = 100,
-            };
-            
+            };            
             camera_center = new Point
             {
                 X = 640,
@@ -224,72 +239,15 @@ namespace EMGU_Stimuli
 
 // THIS FUNCTION IS AN ABJECT MESS. No need to stop the experiment if the fish is in the middle. Who cares. 
 // Also, alternate light and darkness trials. 
-        public void EntrainLoom(int direction)
+        private void CheckFreerunStatus()
         {
-            // this function will repeatedly deliver looming stimuli when the fish is in the middle of the tank to one or the other direction. 
-            return;
-        }
 
-        private void ToggleCondition()
-        {
-            if (minefield_control)
-            {
-                experiment_phase++;
-                experiment_timer.Reset();
-                experiment_timer.Start();
-                pre_escape = false;
-            }
-            if (darkness)
-            {
-                if (pre_escape)
-                {
-                    experiment_timer.Reset();
-                    experiment_timer.Start();
-                    experiment_phase++;
-                }
-                if (start_state_light)
-                {
-                    if (pre_escape)
-                    {
-                        pre_escape = false;
-                    }
-                    else
-                    {
-                        trialnumber++;
-                    }
-                }
-                darkness = false;
-                minefield = true;
-                experiment_type = "_l";
-            }
-            if (minefield)
-            {
-                if (pre_escape)
-                {
-                    experiment_timer.Reset();
-                    experiment_timer.Start();
-                    experiment_phase++;
-                }
-                if (!start_state_light)
-                {
-                    if (pre_escape)
-                    {
-                        pre_escape = false;
-                    }
-                    else
-                    {
-                        trialnumber++;
-                    }
-                }
-                darkness = true;
-                minefield = false;
-                experiment_type = "_d";
-            }
         }
         
         public void StartStim()
         {
-            int still_in_ROI = 1;
+
+            bool still_in_center = false;
             if (!alignment_complete)
             {
                 StimAlign();
@@ -302,10 +260,34 @@ namespace EMGU_Stimuli
             experiment_timer.Start();
             while(true)
             {
-               
-                //    centering_success = OmrStimulus();
-                Console.WriteLine(still_in_ROI.ToString());
-                if (still_in_ROI == 1)
+                if (stimtype == "freerun")
+                {
+                    if (experiment_timer.ElapsedMilliseconds > freerun_mins * 1000 * 60)
+                    {
+                        experiment_phase++;
+                        experiment_timer.Reset();
+                        experiment_timer.Start();
+                        ReadNextTrial();
+                    }
+                }
+                // 
+                else
+                {
+                    if (number_of_crossings < crossing_thresh)
+                    {
+                        Console.WriteLine("Experiment Terminated--Crossing Threshold Not Reached");
+                        experiment_complete = true;
+                        if (mymotor.Position == 2)
+                        {
+                            mymotor.SetPosition(1, 1000);
+                        }
+                        Thread.Sleep(-1);
+                        break;
+                    }
+                }
+
+
+                if (!still_in_center)
                 {
                     if (mymotor.Position == 2)
                     {
@@ -318,18 +300,13 @@ namespace EMGU_Stimuli
                     EmptyBuffer();
                 }                
                 if (centering_success) 
-                {
-               
+                {               
                     Console.WriteLine("Experiment Duration (s)");
                     Console.WriteLine((experiment_timer.ElapsedMilliseconds / 1000).ToString());
-                    if (minefield || minefield_control || memory || darkness)
-                    {
-                        still_in_ROI = GrayBr(); 
-// fish must either leave inner arena or move next to a barrier to get a return from GrayBR.                                 
-                        EmptyBuffer();
-                    }
-                    // !stil_in_ROI means fish has left inner arena. still_in_ROI = 0 means it is next to a barrier.                   
-                    if (still_in_ROI == 1)
+                    still_in_center = GrayBr();
+                    // fish must either leave inner arena or move next to a barrier to get a return from GrayBR.                                
+                    EmptyBuffer();
+                    if (!still_in_center)
                     {
                         Console.WriteLine("outside ROI");
                         number_of_crossings++;
@@ -338,36 +315,30 @@ namespace EMGU_Stimuli
                         //   continue;
                     }
 // This gets called if the fish is in the center for more than 5 minutes. 
-                    else if (still_in_ROI == 0)
-                    {
-                        Console.WriteLine("Timeout Trial " + trialnumber);
-                        if (mymotor.Position == 2)
-                        {
-                            mymotor.SetPosition(1, 1000);
-                        }
-                        Thread.Sleep(-1);
-                        experiment_complete = true;
-                        break;
-                    }
                     else {
                         if (stimtype == "loom")
+                        {
+                            LoomingStimulus(barrier_position_list[barrier_ind]);
+                            ReadNextTrial();
+                        }
+                        if (stimtype == "loom_virtual")
                         {
                             // All you have to do to make all stim left or right is bias the generated barrier position to the left or right. input 'l' or 'r' to this function. 
                             // Also have to change this for real barrier condition
                             virtual_barrier_center = GenerateRandomBarrierPosition();
-                            LoomingStimulus();
+                            LoomingStimulus(virtual_barrier_center);
                         }
                         else if (stimtype == "darkflash")
                         {
                             LightsOut();
                         }
-                        else if (stimtype == "tap" && !pre_escape)
+                        else if (stimtype == "tap")
                         {
                             bool tap_happened = Tap();
                             EmptyBuffer();
                             if (tap_happened)
                             {
-                                ToggleCondition();
+                                ReadNextTrial();
                             }
                         }
                         //else if (stimtype == "tap_dim")
@@ -378,47 +349,28 @@ namespace EMGU_Stimuli
                         //        Tap();
                         //    }
                         //}
-                    }
-                    if (pre_escape && experiment_timer.ElapsedMilliseconds > freerun_mins * 1000 * 60)
+                    }                    
+                    // if during the entire duration of the pre_escapes they didn't enter and leave the ROI, stop the experiment. 
+
+                    
+                }
+                else 
+                {
+                    if(stimtype != "freerrun")
                     {
-                        ToggleCondition();
-                        if (pre_escape == false && number_of_crossings < crossing_thresh)
-// if during the entire duration of the pre_escapes they didn't enter and leave the ROI, stop the experiment. 
-                        { 
-                            Console.WriteLine("Experiment Terminated--Crossing Threshold Not Reached");
-                            experiment_complete = true;
-                            if (mymotor.Position == 2)
-                            {
-                                mymotor.SetPosition(1, 1000);
-                            }
-                            Thread.Sleep(-1);
-                            break;
-                        }
-                        continue;
+                        bool nearwall = WallTap(walltrial);
+                        if (nearwall) {walltrial++;}
                     }
-                    else if ((experiment_timer.ElapsedMilliseconds > (escape_mins) * 1000 * 60) || (trialnumber > 10))
+                    if(walltrial > 10)
                     {
-                        Console.WriteLine("Experiment Completed");
-                        experiment_complete = true;
+                        Console.WriteLine("Timeout Trial " + trialnumber);
                         if (mymotor.Position == 2)
                         {
                             mymotor.SetPosition(1, 1000);
                         }
-                        Thread.Sleep(-1);
+                        experiment_complete = true;
                         break;
                     }
-                }
-                else
-                {
-                    bool nearwall = WallTap(walltrial);
-                    if(nearwall) {walltrial++;}
-                    //Console.WriteLine("Timeout Trial " + trialnumber);                    
-                    //if (mymotor.Position == 2)
-                    //{
-                    //    mymotor.SetPosition(1, 1000);
-                    //}
-                    //experiment_complete = true; 
-                    //break;
                 }
 
             }
@@ -468,9 +420,8 @@ namespace EMGU_Stimuli
             CvInvoke.WaitKey(0);
         }
 
-        private int GrayBr()
+        private bool GrayBr()
         {
-            int inner_time_threshold = 300000;
             MCvScalar background_color = new MCvScalar(150, 150, 150);
             MCvScalar pixvals = new MCvScalar(0, 0, 0);
             if (darkness)
@@ -483,25 +434,6 @@ namespace EMGU_Stimuli
                 CvInvoke.Imshow(win1, img);
                 CvInvoke.WaitKey(1);
             }
-            else if (memory && !motor_closed)
-            {
-                for (int pixval = 150; pixval > 0; pixval--)
-                {
-                    pixvals = new MCvScalar(pixval, pixval, pixval);
-                    img.SetTo(pixvals);
-                    CvInvoke.Imshow(win1, img);
-                    if (pixval == 150)
-                    {
-                        CvInvoke.WaitKey(10000);
-// Allow 2 seconds of Gray
-                    }
-                    else
-                    {
-                        CvInvoke.WaitKey(50);
-                    }
-                }
-                mymotor.SetPosition(2, 1000);
-            }
             else
             {
                 if (mymotor.Position == 2)
@@ -510,24 +442,16 @@ namespace EMGU_Stimuli
                 }
                 img.SetTo(background_color);
                 CvInvoke.Imshow(win1, img);
-                CvInvoke.WaitKey(1); // Ten Second minimum timeout? if so implement here
+                CvInvoke.WaitKey(1000); // One Second minimum timeout? if so implement here
             }
             EmptyBuffer();
             List<Point> fishlocations = new List<Point>();
             Stopwatch trial_clock = new Stopwatch();
-            Stopwatch time_inner_arena = new Stopwatch();
             bool fish_near_barrier = false;
             trial_clock.Start();
-            time_inner_arena.Start();
             while (true)
             {
                 var camdata = pipe_buffer.Receive();
-                if (time_inner_arena.ElapsedMilliseconds > inner_time_threshold)
-                {
-                    Console.WriteLine("Too Long In Center");
-                    fish_near_barrier = false;
-                    return 0;
-                }
                 if (trial_clock.ElapsedMilliseconds > 5) //record at 200 Hz
                 {
                     fishlocations.Add(camdata.fishcoord);
@@ -538,6 +462,7 @@ namespace EMGU_Stimuli
                         if (CheckROI(camdata.fishcoord, "barrier"))
                         {
                             fish_near_barrier = true;
+                            barrier_ind = ind;
                             break;
                         }
                         if (CheckROI(camdata.fishcoord, "return"))
@@ -545,7 +470,7 @@ namespace EMGU_Stimuli
                             fish_near_barrier = false;
                             Console.WriteLine(camdata.fishcoord);
                             Console.WriteLine("Gray BR Exit");
-                            return 1;
+                            return false;
                         }
                     }
                     if (fish_near_barrier) { break; }
@@ -553,7 +478,7 @@ namespace EMGU_Stimuli
                 }
             }
             WriteCoordinateFile("/fishcoords_gray_trial", fishlocations);
-            return 2;
+            return true;
         }
             
 
@@ -927,7 +852,7 @@ namespace EMGU_Stimuli
           }
 
 // LoomingStimulus needs to know which barrier to use as a reference. 
-        private void LoomingStimulus()
+        private void LoomingStimulus(PointF barrier_position)
         {
             string vidstring = "";
             // GENERATE LISTS OF TIMES FOR EACH POINT ACQUIRED. 
@@ -1097,6 +1022,31 @@ namespace EMGU_Stimuli
                 {
                     sr.WriteLine(coord.ToString());
                 }
+            }
+        }
+
+        private void ReadNextTrial()
+        {
+            if (!param_parser.EndOfData)
+            {
+                string trial = param_parser.ReadLine();
+                string[] trial_params = trial.Split(',');
+                Console.WriteLine(trial_params[0]);
+                if (trial_params[0] == "dark") { darkness = false; }
+                else { darkness = true; }
+                stimtype = trial_params[1];
+                if(stimtype == "freerun")
+                {
+                    freerun_mins = Convert.ToInt32(trial_params[3]);
+                }
+                else
+                {
+                    trialnumber = Convert.ToInt32(trial_params[4]);
+                }
+            }
+            else
+            {
+                // End experiment;
             }
         }
 

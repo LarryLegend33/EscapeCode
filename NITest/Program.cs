@@ -18,6 +18,7 @@ using System.Threading;
 using System.IO.Ports;
 using System.IO;
 using System.Threading.Tasks.Dataflow;
+using Microsoft.VisualBasic.FileIO;
 
 
 
@@ -54,6 +55,23 @@ namespace NITest
 
         static void Main(string[] args)
         {
+
+            // Note that if you want to do halfmoon or stonehenge trials, place halfmoon and stonehenge in the center of the tank. 
+            // Fill their center with a barrier for the first mode. Then take the barrier out and take the mode again. Use the smallest barrier possible (so the fish can get close to the center) and, like in nb trials, get rid of the tracking restriction on barriers  
+
+            TextFieldParser parser = new TextFieldParser(@"c:/Users/Deadpool/Desktop/EscapeExperimentGenerator/lightdark_experiment.csv");
+            {
+                parser.TextFieldType = FieldType.Delimited;
+                parser.SetDelimiters(",");                
+            }
+            if (!parser.EndOfData)
+            {
+                string trial = parser.ReadLine();
+                string[] trial_params = trial.Split(',');
+                Console.WriteLine(trial_params[0]);
+            }
+            
+
             var options = new DataflowBlockOptions();
             options.BoundedCapacity = 10;
             var pipe_buffer = new BufferBlock<CamData>(options);
@@ -107,7 +125,14 @@ namespace NITest
             int light_location_Y = Convert.ToInt32(lightloc_Y);
             Console.WriteLine("Enter Experiment Type  ");
             String exp_string = Console.ReadLine();
-            String exp_type = "";   
+            if(exp_string == "n")
+            {
+                minefield_control = true;
+            }
+            else if(exp_string == "b")
+            {
+                minefield = true;
+            }
             String camerawindow = "Camera Window";
             CvInvoke.NamedWindow(camerawindow);
             int frameWidth = 1280;
@@ -134,7 +159,6 @@ namespace NITest
             byte[,] data_2D = new byte[frameHeight, frameWidth];
             byte[,] data_2D_roi = new byte[roidim, roidim];
             byte[,] imagemode_nobarrier = new byte[frameHeight, frameWidth];
-
             byte[,] maxprojimage = new byte[frameHeight, frameWidth];      
             ImaqBuffer image = null;
 //            List<byte[,]> imglist = new List<byte[,]>();
@@ -145,39 +169,7 @@ namespace NITest
             //     DimAndStim experiment = new DimAndStim(true);           
             // DarkFlash experiment = new DarkFlash();
             RecordAndStim experiment = new RecordAndStim(event1, event2,"tap", pipe_buffer);
-            experiment.minefield = false;
-            experiment.minefield_control = false;
-            experiment.memory = false;
-            experiment.darkness = false;
             experiment.experiment_directory = exp_directory;
-            if (exp_string == "n")
-            {
-                minefield_control = true;
-                exp_type = "_n";
-                experiment.minefield_control = true;
-            }
-            else if (exp_string == "l")
-            {
-                minefield = true;
-                exp_type = "_l";
-                experiment.minefield = true;
-            }
-            else if (exp_string == "d")
-            {
-                exp_type = "_d";
-                minefield = true;
-                experiment.darkness = true;
-            }
-            else if (memory)
-            {
-                exp_type = "_m";
-                experiment.memory = true;
-            }
-            else if (stonehenge)
-            {
-                exp_type = "_s";
-            }
-            experiment.experiment_type = exp_type;
 
             var stimthread = new Thread(experiment.StartStim);
             stimthread.Start();
@@ -243,14 +235,13 @@ namespace NITest
 
 // Here you have just added barriers to the tank. Now get a new mode that contains the barriers for use in background subtraction to find fish 
 // and for localizing barriers. 
-
            
             if (stonehenge || minefield || memory)
             {
                 imglist = GetImageList(_session, 5000, 400);
                 imagemode = FindMode(imglist);
                 modeimage_barrier.SetTo(imagemode);
-                modeimage_barrier.Save(exp_directory + "/background" + exp_type + ".tif");
+                modeimage_barrier.Save(exp_directory + "/background_" + exp_string + ".tif");
                 imglist.Clear();
                 barrierlist = BarrierLocations(modeimage_barrier, modeimage);
                 for(int ind = 0; ind < barrierlist.Count; ind++)
@@ -262,7 +253,7 @@ namespace NITest
             else if (minefield_control)
             {
                 modeimage_barrier.SetTo(imagemode_nobarrier);
-                modeimage_barrier.Save(exp_directory + "/background" + exp_type + ".tif");
+                modeimage_barrier.Save(exp_directory + "/background_" + exp_string + ".tif");
 
                 barrierlist = GenerateVirtualBarriers(experiment.tankwidth, tankcenter_x, tankcenter_y);
                 for(int ind = 0; ind < barrierlist.Count; ind++)
@@ -272,7 +263,7 @@ namespace NITest
                 }                                
             }
 
-            using (StreamWriter barrierfile = new StreamWriter(exp_directory + "/barrierstruct" + exp_type + ".txt"))
+            using (StreamWriter barrierfile = new StreamWriter(exp_directory + "/barrierstruct_" + exp_string + ".txt"))
             {
 
                 for (int bar = 0; bar < barrierlist.Count; bar++)
@@ -291,7 +282,7 @@ namespace NITest
             CvInvoke.WaitKey(0);
             
 
-            if (halfmoon) //THIS IS BECAUSE YOU TAKE THE BARRIER AWAY AFTER IT FINDS THE HOLE. IE FOR HALFMOON TRIALS, YOU FIRST KEEP THE HALFMOON THERE FOR MODEIMAGE, THEN ADD A BARRIER THE SIZE OF THE HOLE FOR FINDING OF THE HOLE OF THE BARRIER. 
+            if (halfmoon) //THIS IS BECAUSE YOU TAKE THE BARRIER AWAY AFTER IT FINDS THE HOLE. IE FOR HALFMOON TRIALS, YOU FIRST KEEP THE HALFMOON THERE FOR MODEIMAGE, THEN ADD A BARRIER THE SIZE OF THE HOLE FOR FINDING OF THE HOLE OF THE BARRIER. IF YOU WANT TO RUN STONEHENGE OR HALFMOON, DECLARE MINEFIELD_CONTROL AS TRUE, but don't draw barriers. 
             {
                 modeimage_barrier = modeimage;
                 imagemode = imagemode_nobarrier;
@@ -328,9 +319,7 @@ namespace NITest
                 {
                     Console.WriteLine(e);
                     continue;
-                }
-
-                
+                }                
 
                 byte[] stim_pixel_readout = new byte[100];
                 for (int pix = 0; pix < 100; pix++)
@@ -396,7 +385,7 @@ namespace NITest
                 if (j % 100 == 0 && !experiment.stim_in_progress) 
                 {
                     CvInvoke.Circle(cvimage, new Point(f_center.X, f_center.Y), 2,new MCvScalar(255, 255, 0)); 
-                    if(stonehenge || minefield || minefield_control || memory)
+                    if(halfmoon || stonehenge || minefield || minefield_control)
                     {
                         for(int ind = 0; ind < barrierlist.Count;ind++)
                         CvInvoke.Circle(cvimage, barrierlist[ind].center, barrierlist[ind].height / 2, new MCvScalar(255, 0, 0), 3);
@@ -422,8 +411,8 @@ namespace NITest
                 }
                 j = buff_out + 1;
             }
-            string experiment_string = exp_directory + "/all_xycoords" + exp_type + ".txt";
-            string phasestring = exp_directory + "/phase" + exp_type + ".txt";
+            string experiment_string = exp_directory + "/all_xycoords_" + exp_string + ".txt";
+            string phasestring = exp_directory + "/phase_" + exp_string + ".txt";
             using (StreamWriter sr = new StreamWriter(experiment_string))
             {
                 foreach (Point fishpoint in coordlist)
