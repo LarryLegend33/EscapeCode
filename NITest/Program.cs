@@ -63,8 +63,7 @@ namespace NITest
 
             var options = new DataflowBlockOptions();
             options.BoundedCapacity = 10;
-            var pipe_buffer = new BufferBlock<CamData>(options);
-            bool foundfish = false;
+            var pipe_buffer = new BufferBlock<CamData>(options);           
             Point tank_center = new Point
             {
                 X = 640,
@@ -107,17 +106,13 @@ namespace NITest
             int light_location_Y = Convert.ToInt32(lightloc_Y);
             Console.WriteLine("Enter Experiment Type  ");
             String exp_string = Console.ReadLine();
-            if (exp_string == "n")
+            if (exp_string == "n" || exp_string == "t")
             {
                 minefield_control = true;
             }
             else if (exp_string == "b")
             {
                 minefield = true;
-            }
-            else if (exp_string == "t")
-            {
-                
             }
             String camerawindow = "Camera Window";
             CvInvoke.NamedWindow(camerawindow);
@@ -127,11 +122,10 @@ namespace NITest
             uint buff_out = 0;
             int numchannels = 1;   
             MCvScalar gray = new MCvScalar(128,128,128);                   
-            MCvPoint2D64f comxy = new MCvPoint2D64f();
             List<ContourProperties> barrierlist = new List<ContourProperties>();
-            ContourProperties fishcontour = new ContourProperties();
+            ContourProperties fishcontour = new ContourProperties();            
+            ContourProperties fishcontour_correct = new ContourProperties();
             ContourProperties barrier = new ContourProperties();
-            ThresholdType ttype = 0;
             System.Drawing.Size framesize = new System.Drawing.Size(frameWidth, frameHeight);
             System.Drawing.Size roi_size = new System.Drawing.Size(roidim,roidim);
             Mat cvimage = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
@@ -147,16 +141,11 @@ namespace NITest
             byte[,] imagemode_nobarrier = new byte[frameHeight, frameWidth];
             byte[,] maxprojimage = new byte[frameHeight, frameWidth];      
             ImaqBuffer image = null;
-//            List<byte[,]> imglist = new List<byte[,]>();
             ImaqBufferCollection buffcollection = _session.CreateBufferCollection((int)bufferCount,ImaqBufferCollectionType.VisionImage); 
             _session.RingSetup(buffcollection, 0, false);
             _session.Acquisition.AcquireAsync();
-            // OMRandLoom experiment = new OMRandLoom(event1, event2);
-            //     DimAndStim experiment = new DimAndStim(true);           
-            // DarkFlash experiment = new DarkFlash();
-            RecordAndStim experiment = new RecordAndStim(event1, event2, pipe_buffer);
+            RecordAndStim experiment = new RecordAndStim(event1, event2, pipe_buffer, exp_string);
             experiment.experiment_directory = exp_directory;
-
             var stimthread = new Thread(experiment.StartStim);
             stimthread.Start();
 
@@ -222,7 +211,7 @@ namespace NITest
 // Here you have just added barriers to the tank. Now get a new mode that contains the barriers for use in background subtraction to find fish 
 // and for localizing barriers. 
            
-            if (stonehenge || minefield)
+            if (halfmoon || stonehenge || minefield)
             {
                 imglist = GetImageList(_session, 5000, 400);
                 imagemode = FindMode(imglist);
@@ -289,7 +278,7 @@ namespace NITest
             List<Point> coordlist = new List<Point>();
             List<int> phasebounds = new List<int>();
             while (true)
-            {
+            {           
                 if (mode_reset.WaitOne(0))
                 {
                     Console.WriteLine("Clearing Imagelist");
@@ -313,49 +302,18 @@ namespace NITest
                     stim_pixel_readout[pix] = data_2D[light_location_Y, light_location_X+pix]; 
                 }              
                 cvimage.SetTo(data_2D);
-             // This is a mistake if think...cvimage gets updated but cvroi does not. cvroi should be immediately updated with
-             // fcenter x and y as bounds. 
-             // f_center is the fish coords in full frame 
-                if (foundfish)
-                {  
-                    modeimage_barrier_roi.SetTo(SliceROI(imagemode, f_center.X, f_center.Y, roidim));
-                    data_2D_roi = SliceROI(data_2D, f_center.X, f_center.Y, roidim);
-                    cv_roi = new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
-                    cv_roi.SetTo(data_2D_roi);
-                    fishcontour = FishContour(cv_roi, modeimage_barrier_roi, tank_center, barrierlist, minefield_control);
-                    CvInvoke.Circle(cv_roi, new Point(fishcontour.center.X, fishcontour.center.Y), 2, new MCvScalar(255, 255, 0));
-                    if (fishcontour.height != 0)
-                    {
-                        f_center.X = (int)fishcontour.center.X + f_center.X - roidim / 2;  // puts ROI coords into full frame coords
-                        f_center.Y = (int)fishcontour.center.Y+f_center.Y-roidim/2;
-                    }
-                    else
-                    {
-                        foundfish = false;
-                    }
-                }
-                if (!foundfish)
+                fishcontour = FishContour(cvimage, modeimage_barrier, tank_center, barrierlist, minefield_control);
+// com makes sure that the head is near the barrier. 
+                if (fishcontour.height != 0)
                 {
-                    fishcontour = FishContour(cvimage, modeimage_barrier, tank_center, barrierlist, minefield_control);
-                    if (fishcontour.height != 0)
-                    {
-                        f_center.X = (int)fishcontour.center.X;
-                        f_center.Y = (int)fishcontour.center.Y;
-                        data_2D_roi = SliceROI(data_2D, f_center.X, f_center.Y, roidim);
-                        cv_roi = new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
-                        cv_roi.SetTo(data_2D_roi);                  
-                    }
-                    else
-                    {
-                        foundfish = false;
-                        data_2D_roi = SliceROI(data_2D, f_center.X, f_center.Y, roidim);
-                        cv_roi = new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
-                        cv_roi.SetTo(data_2D_roi);
-                        //     cv_roi = new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
-                        //     cv_roi.SetTo(gray); //in movie indicates that program lost the fish on this frame
-                    }
-                }              
-                CamData camdat = new CamData(cv_roi, f_center, fishcontour, buff_out, j, stim_pixel_readout);
+                    fishcontour_correct = fishcontour;
+                    f_center.X = fishcontour.com.X;
+                    f_center.Y = fishcontour.com.Y;
+                }
+                data_2D_roi = SliceROI(data_2D, f_center.X, f_center.Y, roidim);
+                cv_roi = new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
+                cv_roi.SetTo(data_2D_roi);                
+                CamData camdat = new CamData(cv_roi, f_center, fishcontour_correct, buff_out, j, stim_pixel_readout);
                 pipe_buffer.Post(camdat);
                 if (j % 10 == 0)
                 {
@@ -367,10 +325,10 @@ namespace NITest
                         phasebounds.Add(xycounter);
                     }
                 }
-// PROBABLY MAKE THIS SO IT DOESNT DRAW DURING A STIMULUS
                 if (j % 100 == 0 && !experiment.stim_in_progress) 
                 {
-                    CvInvoke.Circle(cvimage, new Point(f_center.X, f_center.Y), 2,new MCvScalar(255, 255, 0)); 
+                    CvInvoke.Circle(cvimage, fishcontour_correct.center, 2,new MCvScalar(255, 255, 0)); 
+                    CvInvoke.Circle(cvimage, fishcontour_correct.com, 2,new MCvScalar(0, 0, 0)); 
                     if(halfmoon || stonehenge || minefield || minefield_control)
                     {
                         for(int ind = 0; ind < barrierlist.Count;ind++)
@@ -378,7 +336,7 @@ namespace NITest
                     }
                     else
                     {
-                        CvInvoke.Circle(cvimage, experiment.current_barrier_loc, barrier.height / 2, new MCvScalar(255, 0, 0), 3);
+                        CvInvoke.Circle(cvimage, experiment.barrier_center, barrier.height / 2, new MCvScalar(255, 0, 0), 3);
                     }
                     CvInvoke.Imshow(camerawindow, cvimage);
                     CvInvoke.WaitKey(1);
@@ -397,6 +355,7 @@ namespace NITest
                 }
                 j = buff_out + 1;
             }
+
             string experiment_string = exp_directory + "/all_xycoords_" + exp_string + ".txt";
             string phasestring = exp_directory + "/phase_" + exp_string + ".txt";
             using (StreamWriter sr = new StreamWriter(experiment_string))
@@ -445,7 +404,8 @@ namespace NITest
             CvInvoke.FindContours(image, contours, hierarchy, RetrType.External, ChainApproxMethod.ChainApproxNone);
             int fish_contour_index = 0;
             int height = 0;
-            var contourCOM = new Point();
+            Point contourCOM = new Point();
+            Point contour_center = new Point();
             Rectangle bounding_rect = new Rectangle();
             for (int ind = 0; ind < contours.Size; ind++)
             {
@@ -454,6 +414,8 @@ namespace NITest
                 contourCOM.X = (int)(com.M10 / com.M00);
                 contourCOM.Y = (int)(com.M01 / com.M00);
                 bounding_rect = CvInvoke.BoundingRectangle(contours[ind]);
+                contour_center.X = (int)(bounding_rect.X + (float)bounding_rect.Width / (float)2);
+                contour_center.Y = (int)(bounding_rect.Y + (float)bounding_rect.Height / (float)2);
                 if (bounding_rect.Width > bounding_rect.Height)
                 {
                     height = bounding_rect.Width;
@@ -465,11 +427,6 @@ namespace NITest
 //                Console.WriteLine(height);
                 if (height < 60 && height > 8)
                 {
-                    // Prevents LED from being read as fish and barrier edge from being read as fish
-                 
-                    //Point rawfc = new Point();
-                    //rawfc.X = (int)(bounding_rect.X + (float)bounding_rect.Width / (float)2);
-                    //rawfc.Y = (int)(bounding_rect.Y + (float)bounding_rect.Height / (float)2);
                     if (image_raw.Width > 1000)
                     {
                         if (!control)
@@ -490,8 +447,8 @@ namespace NITest
                                 continue;
                             }
                         }
-                        if (VectorMag(contourCOM, tc) > 450)
-//this tells the algorithm not to look for fish outside the tank. 
+                        if (VectorMag(contourCOM, tc) > 460)
+                        //this tells the algorithm not to look for fish outside the tank. 
                         {
                             continue;
                         }
@@ -503,7 +460,6 @@ namespace NITest
                     fish_contour_index = ind;                    
                     fishcont_found = true;
                     break;
-
                 }
             }
             if (fishcont_found)
@@ -511,12 +467,7 @@ namespace NITest
 // could also choose the contour center below using the bounding rect
                 contprops.com = contourCOM;
                 contprops.height = height;
-                contprops.center = contourCOM;
-         
-
-//                contourCenter.X = (int)(bounding_rect.X + (float)bounding_rect.Width / (float)2);
-//                contourCenter.Y = (int)(bounding_rect.Y + (float)bounding_rect.Height / (float)2);
-//                Console.WriteLine(contprops.height);
+                contprops.center = contour_center;        
             }
             return contprops;
         }
@@ -545,18 +496,6 @@ namespace NITest
                 roicol = 0;
             }
             return roi;
-        }
-
-        static MCvPoint2D64f CenterOfMass(Mat image, Mat background, uint framenum)
-        {
-            MCvPoint2D64f comxy = new MCvPoint2D64f();
-            MCvMoments COM = new MCvMoments();
-            CvInvoke.AbsDiff(image, background, image);
-            CvInvoke.Threshold(image, image, 80, 255, 0);
-            COM = CvInvoke.Moments(image, true);
-            CvInvoke.cvGetCentralMoment(ref COM, 1, 1);
-            comxy = COM.GravityCenter;
-            return comxy;
         }
 
         public struct ContourProperties
@@ -722,23 +661,6 @@ namespace NITest
         }
 
 
-
-        static uint GrabPixelData(Mat mymat, int row, int column)
-        {
-            byte[] pixeldata = new byte[mymat.Height * mymat.Width];
-            GCHandle handle = GCHandle.Alloc(pixeldata, GCHandleType.Pinned);
-            using (Mat tempmat = new Mat(mymat.Size, DepthType.Cv8U, 1, handle.AddrOfPinnedObject(), mymat.Width))
-                mymat.CopyTo(tempmat);
-            handle.Free();
-            return pixeldata[row * column];            
-        }
-
-        //new funcction that wraps Findmode, but changes the mode variable of the NItest class when it finishes. 
-        // have a separate mode variable that is reserved for an update by the mode thread. when WaitOne(0) is true, indicating that 
-        // the Autoreset event has changed, this means that the thread is complete and you can switch the result from the separate mode
-        // variable into imagemode, which is the mainline mode variable. otherwise, you could just hack together a non WaitOne / Autreset 
-        // solution that simply updates the mode in a thread based on your wrapper function. 
-
         public static void ModeWrapper(List<byte[,]> md_images, AutoResetEvent md_reset)
         {
             Console.WriteLine("ModeWrapper Called");
@@ -809,38 +731,7 @@ namespace NITest
             Console.WriteLine("Done");
             return output;
         }
-
-
-
-
-
-
-
-
     }
     }
 
-
-// MAKING A PRODUCER CONSUMER:
-
-// IDEA IS TO CONTINUALLY THROW THINGS INTO THE BUFFER FROM THE CAMERA. THAT THING WILL BE A STRUCT WITH X,Y of FISH, THE ROI AROUND THE FISH, THE 4 PIXELS USED FOR STIM DETECTION, AND buff_out, which is which buffer is actually taken from the camera upon requesting the buffer. THIS STRUCT WILL BE THROWN INTO A BUFFER WHILE THE STIM THREAD WAITS FOR SOMETHIGN TO BE ADDED (instead of waiting every 2 seconds, simply works when there is something available on the buffer line). THE LIBRARY TO USE IS TPL_DATAFLOW. 
-
-
-// CODE HERE IS NOT FUNCTIONAL WITH THE BUFFERS YOU'RE TRYING TO CREATE. SYNCHRONOUS ACQUISITION REQUIRES GRAB COMMAND INSTEAD OF EXTRACT. 
-
-  //         _session.GrabSetup(true); //THIS FUCKS YOU. STARTS A SYNCHRONOUS ACQUISITION THAT YOU HAVE TO USE THE GRAB COMMAND FOR INSTEAD OF EXTRACT. 
-      //      for (uint i = 0; i < 10000; i++)
-      //      {
-      //          _session.Grab(valarray, false);   
-      ////          if (i % 50 == 0)
-      //  //        {
-      //              // imglist.Add(data_2D); // BE CAREFUL TO COPY HERE BECAUSE THE ARRAY IS A REFERENCE TYPE AND YOURE JUST COPYING IN THE REFERENCE. 
-      //              cvimage.SetTo(data_2D);
-      //    //      }
-              
-      //        //  cvimage.SetTo(valarray.U8);
-
-      //          CvInvoke.Imshow("mikrotron", cvimage);
-      //          CvInvoke.WaitKey(1);
-      //      }
 

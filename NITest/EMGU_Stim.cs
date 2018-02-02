@@ -30,12 +30,11 @@ namespace EMGU_Stimuli
 
     class RecordAndStim
     {
-        public Point current_barrier_loc, virtual_barrier_center,fish_center, barrier_center,projcenter_camcoords, tankcenter;
-        public volatile bool start_align, experiment_running, alignment_complete, centering_success, minefield, minefield_control, darkness, memory, stim_in_progress, motor_closed, experiment_complete, pre_escape, start_state_light;
-        public volatile int trialnumber, tankwidth, barrier_radius, templatewidth, threshold_radius, threshold_multiplier, number_of_trials, stim_pixel_readout, freerun_mins, escape_mins, crossing_thresh, experiment_phase, walltrial;
+        public Point virtual_barrier_center,fish_center, barrier_center,projcenter_camcoords, tankcenter;
+        public volatile bool start_align, experiment_running, alignment_complete, darkness, stim_in_progress, experiment_complete;
+        public volatile int trialnumber, tankwidth, barrier_radius, templatewidth, threshold_radius, threshold_multiplier, freerun_mins, crossing_thresh, experiment_phase, walltrial, number_of_crossings;
         public volatile string experiment_type, experiment_directory;
-        string param_string, lightordark;
-        float looming_diam, looming_size_thresh, growth_rate;
+        string param_directory, param_file, lightordark;
         public Mat roi;
         PointF stimcenter;
         Point projector_center, camera_center;
@@ -50,21 +49,24 @@ namespace EMGU_Stimuli
         BufferBlock<NITest.Program.CamData> pipe_buffer;
         TextFieldParser param_parser;
 
-        public RecordAndStim(AutoResetEvent event_1, AutoResetEvent event_2, BufferBlock<NITest.Program.CamData> buffblock)
+        public RecordAndStim(AutoResetEvent event_1, AutoResetEvent event_2, BufferBlock<NITest.Program.CamData> buffblock, string experiment_type)
         {
+            string param_directory = "c:/Users/Deadpool/Desktop/EscapeExperimentGenerator/";
+            Console.WriteLine(experiment_type);
             if(experiment_type == "b")
             {
-                param_string = "lightdark_experiment.csv";
+                param_file = param_directory + "lightdark_experiment.csv";
             }
             else if(experiment_type == "n")
             {
-                param_string = "control_experiment.csv";
+                param_file = param_directory + "control_experiment.csv";
             }
             else if(experiment_type == "t")
             {
-                param_string = "loom_training.csv";
+                param_file = param_directory + "loom_training.csv";
             }
-            param_parser = new TextFieldParser(@"c:/Users/Deadpool/Desktop/EscapeExperimentGenerator/" + param_string);
+            Console.WriteLine(param_file);
+            param_parser = new TextFieldParser(param_file);
             { 
                 param_parser.TextFieldType = FieldType.Delimited;
                 param_parser.SetDelimiters(",");
@@ -75,16 +77,13 @@ namespace EMGU_Stimuli
             pipe_buffer = buffblock;
             barrier_position_list = new List<Point>();
             barrier_radius_list = new List<int>();
-            pre_escape = true;
-            walltrial = 1;
-            number_of_trials = 10;
+            walltrial = 0;
+            freerun_mins = 0;
             threshold_multiplier = 3;
             threshold_radius = 40;
-            freerun_mins = 5;
-            escape_mins = 60;
             crossing_thresh = 2;
             experiment_phase = 0;
-
+            number_of_crossings = 0;
             // CHANGING THESE 3 THINGS CHANGES WHETHER THE PROGRAM CALIBRATES OR NOT. 
             alignment_complete = true;
             projector_center = new Point
@@ -94,25 +93,15 @@ namespace EMGU_Stimuli
             };
             tankwidth = 952;
             //
-
+            templatewidth = 774;
             roi = new Mat(new Size(80,80), Emgu.CV.CvEnum.DepthType.Cv8U, 1);
-            centering_success = true;
-            tankcenter = new Point
-            {
-                X = 640,
-                Y = 512,
-            };
+            tankcenter = new Point{X = 640, Y = 512,};
             barrier_radius = 75;
             fish_center.X = 0;            
             fish_center.Y = 0;
             trialnumber = 1;
-            templatewidth = 774;
             barrier_center.X = tankcenter.X;
             barrier_center.Y = tankcenter.Y;
-            virtual_barrier_center.X = 0;
-            virtual_barrier_center.Y = 0;
-            current_barrier_loc.X = 0;
-            current_barrier_loc.Y = 0;
             start_align = false;
             experiment_running = true;
             // MFF102 Control. State 2 is up, state 1 is sideways
@@ -126,9 +115,6 @@ namespace EMGU_Stimuli
             {
                 mymotor.SetPosition(1, 1000);
             }                  
-            looming_diam = 1;
-            looming_size_thresh = 60;
-            growth_rate = 1.01f;
             event1 = event_1;
             event2 = event_2;
             projcenter_camcoords = new Point
@@ -237,25 +223,6 @@ namespace EMGU_Stimuli
 // Also, alternate light and darkness trials. 
         private void CheckFreerunStatus()
         {
-
-        }
-        
-        public void StartStim()
-        {
-
-            bool still_in_center = false;
-            if (!alignment_complete)
-            {
-                StimAlign();
-                Calibration_Templates();
-            }
-            TankTemplate();
-            int number_of_crossings = 0;
-            centering_success = true;          
-            
-            experiment_timer.Start();
-            while(true)
-            {
                 if (stimtype == "freerun")
                 {
                     if (experiment_timer.ElapsedMilliseconds > freerun_mins * 1000 * 60)
@@ -269,7 +236,7 @@ namespace EMGU_Stimuli
                 // 
                 else
                 {
-                    if (number_of_crossings < crossing_thresh)
+                    if (experiment_phase > 0 && number_of_crossings < crossing_thresh)
                     {
                         Console.WriteLine("Experiment Terminated--Crossing Threshold Not Reached");
                         experiment_complete = true;
@@ -278,11 +245,31 @@ namespace EMGU_Stimuli
                             mymotor.SetPosition(1, 1000);
                         }
                         Thread.Sleep(-1);
-                        break;
                     }
                 }
 
+        }
 
+        public void Calibrate_And_Align()
+        {
+            if (!alignment_complete)
+            {
+                StimAlign();
+                Calibration_Templates();
+            }
+            TankTemplate();
+        }
+        
+        public void StartStim()
+        {
+            Calibrate_And_Align();
+            ReadNextTrial();
+            bool still_in_center = false;
+            bool centering_success = true;                      
+            experiment_timer.Start();
+            while(true)
+            {
+                CheckFreerunStatus();
                 if (!still_in_center)
                 {
                     if (mymotor.Position == 2)
@@ -310,24 +297,16 @@ namespace EMGU_Stimuli
                         Console.WriteLine(number_of_crossings.ToString());
                         //   continue;
                     }
-// This gets called if the fish is in the center for more than 5 minutes. 
                     else {
                         if (stimtype.Substring(2) == "loom")
                         {
                             LoomingStimulus(barrier_center);
-// in looming stimulus, call LoomingCoordinate
                             ReadNextTrial();
-                        }
-                        if (stimtype == "loom_virtual")
-                        {
-                            // All you have to do to make all stim left or right is bias the generated barrier position to the left or right. input 'l' or 'r' to this function. 
-                            // Also have to change this for real barrier condition
-                            virtual_barrier_center = GenerateRandomBarrierPosition();
-                            LoomingStimulus(virtual_barrier_center);
                         }
                         else if (stimtype == "darkflash")
                         {
                             LightsOut();
+                            ReadNextTrial();
                         }
                         else if (stimtype == "tap")
                         {
@@ -338,6 +317,7 @@ namespace EMGU_Stimuli
                                 ReadNextTrial();
                             }
                         }
+// TAPDIM STIMULUS ISNT YET UPDATED TO GRAB FROM BUFFER LIKE OTHER STIMS
                         //else if (stimtype == "tap_dim")
                         //{
                         //    still_in_ROI = SlowDim("projector");
@@ -353,12 +333,13 @@ namespace EMGU_Stimuli
                 }
                 else 
                 {
-                    if(stimtype != "freerrun")
+                    if(stimtype != "freerun")
                     {
-                        bool nearwall = WallTap(walltrial);
+                        bool nearwall = WallTap();
                         if (nearwall) {walltrial++;}
+                        EmptyBuffer();
                     }
-                    if(walltrial > 10)
+                    if(stimtype == "freerun" || walltrial == 5)
                     {
                         Console.WriteLine("Timeout Trial " + trialnumber);
                         if (mymotor.Position == 2)
@@ -366,6 +347,7 @@ namespace EMGU_Stimuli
                             mymotor.SetPosition(1, 1000);
                         }
                         experiment_complete = true;
+                        Thread.Sleep(-1);
                         break;
                     }
                 }
@@ -379,7 +361,8 @@ namespace EMGU_Stimuli
             Point looming_coord = new Point();
             Point stimcenter_tank = new Point();
             List<Point> stimcoords = new List<Point>();
-            int distfromfish = 40;
+            int distfromfish = 30;
+            double mag = 0;
 
             if (stimtype == "b_loom" || stimtype == "v_loom")
             {
@@ -387,7 +370,7 @@ namespace EMGU_Stimuli
                 Point vecdiff = new Point();                
                 vecdiff.X = fcenter_tank.X - barrier_center.X;
                 vecdiff.Y = fcenter_tank.Y - barrier_center.Y;
-                double mag = VectorMag(vecdiff);                
+                mag = VectorMag(vecdiff);                
                 stimcenter_tank.X = (int)(fcenter_tank.X + (vecdiff.X / mag) * distfromfish);
                 stimcenter_tank.Y = (int)(fcenter_tank.Y + (vecdiff.Y / mag) * distfromfish);
                 looming_coord = TransformPoint(stimcenter_tank);
@@ -403,17 +386,18 @@ namespace EMGU_Stimuli
             }
             Vector3D zvec = new Vector3D(0, 0, zvec_z);
             Vector3D fish_orientation = new Vector3D();
-            fish_orientation.X = f_contour.center.X - f_contour.com.X;
-            fish_orientation.Y = f_contour.center.Y - f_contour.com.Y;
+            fish_orientation.X = f_contour.com.X - f_contour.center.X;
+            fish_orientation.Y = f_contour.com.Y - f_contour.center.Y;
             fish_orientation.Z = 0;
+            mag = VectorMag(new PointF((float)fish_orientation.X, (float)fish_orientation.Y));
+            Vector3D unit_orientation = fish_orientation / mag; 
             Vector3D crossprod = new Vector3D();
-            crossprod = Vector3D.CrossProduct(fish_orientation, zvec);
-            stimcenter_tank.X = (int)(f_contour.center.X + crossprod.X * distfromfish);
-            stimcenter_tank.Y = (int)(f_contour.center.Y + crossprod.Y * distfromfish);
+            crossprod = Vector3D.CrossProduct(unit_orientation, zvec);
+            stimcenter_tank.X = (int)(f_contour.com.X + fish_orientation.X + crossprod.X * distfromfish);
+            stimcenter_tank.Y = (int)(f_contour.com.Y + fish_orientation.Y + crossprod.Y * distfromfish);
             looming_coord = TransformPoint(stimcenter_tank);
             stimcoords.Add(looming_coord);
             stimcoords.Add(stimcenter_tank);
-
             return stimcoords;
         }
 
@@ -515,7 +499,7 @@ namespace EMGU_Stimuli
                     trial_clock.Restart();
                 }
             }
-            WriteCoordinateFile("/fishcoords_gray_trial", fishlocations);
+            WriteCoordinateFile("/fishcoords_gray_trial", fishlocations, trialnumber);
             return true;
         }
             
@@ -726,7 +710,7 @@ namespace EMGU_Stimuli
             tapmovie.Dispose();
             stimstring = experiment_directory + "/stimulus_trial" + trialnumber.ToString("D2") + "_" + lightordark[0] + ".txt";
             buffstring = experiment_directory + "/buffid_trial" + trialnumber.ToString("D2") + "_" + lightordark[0] + ".txt";
-            WriteCoordinateFile("/tapresponse_trial", coordlist);
+            WriteCoordinateFile("/tapresponse_trial", coordlist, trialnumber);
             using (StreamWriter sr = new StreamWriter(stimstring))
             {
                 foreach (byte[] pix in stim_pixels)
@@ -748,8 +732,14 @@ namespace EMGU_Stimuli
 
         }
 
-        private bool WallTap(int trialnum)
+        private bool WallTap()
         {
+            Console.WriteLine("WallTap Initiated");
+            MCvScalar background_color = new MCvScalar(150, 150, 150);
+            img.SetTo(background_color);
+            CvInvoke.Imshow(win1, img);
+            CvInvoke.WaitKey(1000);
+            EmptyBuffer();
             List<Point> coordlist = new List<Point>();
             List<byte[]> stim_pixels = new List<byte[]>();
             List<Tuple<uint, uint>> buffer_id = new List<Tuple<uint,uint>>();
@@ -759,7 +749,7 @@ namespace EMGU_Stimuli
             string stimstring = "";
             string buffstring = "";
             int lastframe = 2000;
-            vidstring = experiment_directory + "/wall_tap" + trialnum.ToString("D2") + "_" + lightordark[0] + ".AVI";
+            vidstring = experiment_directory + "/wall_tap" + walltrial.ToString("D2") + "_" + lightordark[0] + ".AVI";
             VideoWriter tapmovie = new VideoWriter(vidstring, 0, 500, new Size(80, 80), false);
             while (true)
             {
@@ -810,9 +800,9 @@ namespace EMGU_Stimuli
                   }
                 }
             tapmovie.Dispose();
-            stimstring = experiment_directory + "/wallstim_trial" + trialnumber.ToString("D2") + "_" + lightordark[0] + ".txt";
-            buffstring = experiment_directory + "/wallbuff_trial" + trialnumber.ToString("D2") + "_" + lightordark[0] + ".txt";
-            WriteCoordinateFile("/walltap_trial", coordlist);
+            stimstring = experiment_directory + "/wallstim_trial" + walltrial.ToString("D2") + "_" + lightordark[0] + ".txt";
+            buffstring = experiment_directory + "/wallbuff_trial" + walltrial.ToString("D2") + "_" + lightordark[0] + ".txt";
+            WriteCoordinateFile("/walltap_trial", coordlist, walltrial);            
             using (StreamWriter sr = new StreamWriter(stimstring))
             {
                 foreach (byte[] pix in stim_pixels)
@@ -892,6 +882,9 @@ namespace EMGU_Stimuli
 // LoomingStimulus needs to know which barrier to use as a reference. 
         private void LoomingStimulus(PointF barrier_position)
         {
+            float looming_diam = 1;
+            float looming_size_thresh = 60;
+            float growth_rate = 1.01f;
             string vidstring = "";
             // GENERATE LISTS OF TIMES FOR EACH POINT ACQUIRED. 
             vidstring = experiment_directory + "/loom_movie" + trialnumber.ToString("D2") + "_" + lightordark[0] + ".AVI";
@@ -929,7 +922,7 @@ namespace EMGU_Stimuli
                     looming_size.Width = looming_diam;
                     if (looming_diam > looming_size_thresh)
                     {
-                        Console.WriteLine("Looming Complete");
+                        Console.WriteLine("Looming Complete");                        
                         break;
                     }
                     img.SetTo(gray);
@@ -948,9 +941,10 @@ namespace EMGU_Stimuli
                 }
             }
             looming_diam = 1;
-            WriteCoordinateFile("/looming_fishcoords_trial", fishlocations);
-            WriteCoordinateFile("/looming_stimcoords_trial", stimlocations);
+            WriteCoordinateFile("/looming_fishcoords_trial", fishlocations, trialnumber);
+            WriteCoordinateFile("/looming_stimcoords_trial", stimlocations, trialnumber);
             loommovie.Dispose();
+            stim_in_progress = false;
             return;
         }
 
@@ -1002,7 +996,7 @@ namespace EMGU_Stimuli
                     trial_clock.Restart();
                 }
             }
-            WriteCoordinateFile("/fishcoords_ptax_trial", fishlocations);
+            WriteCoordinateFile("/fishcoords_ptax_trial", fishlocations, trialnumber);
             return phototaxis_successful;
         }
 
@@ -1012,9 +1006,9 @@ namespace EMGU_Stimuli
             while (pipe_buffer.TryReceive(out camdata)) {}
         }
 
-        private void WriteCoordinateFile(string file_id, List<Point> coordinate_list)
-        {
-            string file_string = experiment_directory + file_id + trialnumber.ToString("D2") + "_" + lightordark[0] + ".txt";
+        private void WriteCoordinateFile(string file_id, List<Point> coordinate_list, int trial)
+        {            
+            string file_string = experiment_directory + file_id + trial.ToString("D2") + "_" + lightordark[0] + ".txt";
             using (StreamWriter sr = new StreamWriter(file_string))
             {
                 foreach (Point coord in coordinate_list)
@@ -1032,8 +1026,8 @@ namespace EMGU_Stimuli
                 string[] trial_params = trial.Split(',');
                 Console.WriteLine(trial_params[0]);
                 lightordark = trial_params[0];
-                if (lightordark == "dark") { darkness = false; }
-                else { darkness = true; }
+                if (lightordark == "dark") { darkness = true; }
+                else { darkness = false; }
                 stimtype = trial_params[1];
                 if(stimtype == "freerun")
                 {
@@ -1041,12 +1035,18 @@ namespace EMGU_Stimuli
                 }
                 else
                 {
-                    trialnumber = Convert.ToInt32(trial_params[4]);
+                    trialnumber = Convert.ToInt32(trial_params[3]);
                 }
             }
             else
             {
-                // End experiment;
+                experiment_complete = true;
+                if (mymotor.Position == 2)
+                {
+                    mymotor.SetPosition(1, 1000);
+                }
+                Console.WriteLine("All Trials Completed");
+                Thread.Sleep(-1);
             }
         }
 
@@ -1128,7 +1128,7 @@ namespace EMGU_Stimuli
                     }
                 }
             }
-            WriteCoordinateFile("/fishcoords_omr_trial", fishlocations);
+            WriteCoordinateFile("/fishcoords_omr_trial", fishlocations, trialnumber);
             return omr_successful;
         }                  
 
