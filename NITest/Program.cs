@@ -72,6 +72,7 @@ namespace NITest
             int roidim = 80;
             string camera_id = "img0"; //this is the ID of the NI-IMAQ board in NI MAX. 
             var _session = new ImaqSession(camera_id);
+            bool drew_barriers = false;
             bool halfmoon = false;
             bool stonehenge = false;
             bool minefield = false;
@@ -106,7 +107,7 @@ namespace NITest
             int light_location_Y = Convert.ToInt32(lightloc_Y);
             Console.WriteLine("Enter Experiment Type  ");
             String exp_string = Console.ReadLine();
-            if (exp_string == "n" || exp_string == "t")
+            if (exp_string == "n" || exp_string == "t" || exp_string == "v")
             {
                 minefield_control = true;
             }
@@ -303,6 +304,7 @@ namespace NITest
                 }              
                 cvimage.SetTo(data_2D);
                 fishcontour = FishContour(cvimage, modeimage_barrier, tank_center, barrierlist, minefield_control);
+
 // com makes sure that the head is near the barrier. 
                 if (fishcontour.height != 0)
                 {
@@ -310,9 +312,30 @@ namespace NITest
                     f_center.X = fishcontour.com.X;
                     f_center.Y = fishcontour.com.Y;
                 }
-                data_2D_roi = SliceROI(data_2D, f_center.X, f_center.Y, roidim);
+                if (!experiment.stim_in_progress)
+                {
+                    drew_barriers = false;
+                }
+                if (experiment.stim_in_progress && !drew_barriers)
+                {
+                    if (halfmoon || stonehenge || minefield || minefield_control)
+                    {
+                        for (int ind = 0; ind < barrierlist.Count; ind++)
+                        {
+                            CvInvoke.Circle(cvimage, barrierlist[ind].center, barrierlist[ind].height / 2, new MCvScalar(255, 0, 0), 1);
+                        }
+                    }
+                    Image<Gray, Byte> d2d = cvimage.ToImage<Gray, Byte>();
+                    data_2D_roi = SliceROIImage(d2d, f_center.X, f_center.Y, roidim);
+                    drew_barriers = true;
+                }
+                else
+                {
+                    data_2D_roi = SliceROI(data_2D, f_center.X, f_center.Y, roidim);
+                }
                 cv_roi = new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
-                cv_roi.SetTo(data_2D_roi);                
+                cv_roi.SetTo(data_2D_roi); 
+                
                 CamData camdat = new CamData(cv_roi, f_center, fishcontour_correct, buff_out, j, stim_pixel_readout);
                 pipe_buffer.Post(camdat);
                 if (j % 10 == 0)
@@ -327,12 +350,12 @@ namespace NITest
                 }
                 if (j % 100 == 0 && !experiment.stim_in_progress) 
                 {
-                    CvInvoke.Circle(cvimage, fishcontour_correct.center, 2,new MCvScalar(255, 255, 0)); 
-                    CvInvoke.Circle(cvimage, fishcontour_correct.com, 2,new MCvScalar(0, 0, 0)); 
-                    if(halfmoon || stonehenge || minefield || minefield_control)
+                //    CvInvoke.Circle(cvimage, fishcontour_correct.center, 2,new MCvScalar(255, 255, 0)); 
+                    CvInvoke.Circle(cvimage, fishcontour_correct.com, 2,new MCvScalar(255, 255, 255));
+                    if (halfmoon || stonehenge || minefield || minefield_control)
                     {
-                        for(int ind = 0; ind < barrierlist.Count;ind++)
-                        CvInvoke.Circle(cvimage, barrierlist[ind].center, barrierlist[ind].height / 2, new MCvScalar(255, 0, 0), 3);
+                        for (int ind = 0; ind < barrierlist.Count; ind++)
+                            CvInvoke.Circle(cvimage, barrierlist[ind].center, barrierlist[ind].height / 2, new MCvScalar(255, 0, 0), 3);
                     }
                     else
                     {
@@ -424,7 +447,6 @@ namespace NITest
                 {
                     height = bounding_rect.Height;
                 }
-//                Console.WriteLine(height);
                 if (height < 60 && height > 8)
                 {
                     if (image_raw.Width > 1000)
@@ -471,6 +493,33 @@ namespace NITest
             }
             return contprops;
         }
+
+       static byte[,] SliceROIImage(Image<Gray, Byte> rawdata, int centerX,int centerY, int dimension) {
+            byte[,] roi = new byte[dimension, dimension];
+            int roirow = 0;
+            int roicol = 0;
+            int half_roi_dim = dimension / 2;
+            for (int rowind = centerY - half_roi_dim; rowind < centerY + half_roi_dim; rowind++)
+            { 
+                for (int colind = centerX - half_roi_dim; colind < centerX + half_roi_dim; colind++)
+                {
+                    if (rowind >= 0 && colind >= 0 && rowind < rawdata.Width && colind < rawdata.Height)
+                    {
+                        roi[roirow, roicol] = rawdata.Data[rowind, colind, 0];
+                    }
+                    else
+                    {
+                        roi[roirow, roicol] = 0;
+                    }
+                    roicol++;
+                }
+                roirow++;
+                roicol = 0;
+            }
+            return roi;
+            }
+
+
 
         static byte[,] SliceROI(byte[,] rawdata,int centerX,int centerY, int dimension)
         {

@@ -49,29 +49,31 @@ namespace EMGU_Stimuli
         BufferBlock<NITest.Program.CamData> pipe_buffer;
         TextFieldParser param_parser;
 
-        public RecordAndStim(AutoResetEvent event_1, AutoResetEvent event_2, BufferBlock<NITest.Program.CamData> buffblock, string experiment_type)
+        public RecordAndStim(AutoResetEvent event_1, AutoResetEvent event_2, BufferBlock<NITest.Program.CamData> buffblock, string exp_type)
         {
             string param_directory = "c:/Users/Deadpool/Desktop/EscapeExperimentGenerator/";
-            Console.WriteLine(experiment_type);
-            if(experiment_type == "b")
+            if(exp_type == "b")
             {
                 param_file = param_directory + "lightdark_experiment.csv";
             }
-            else if(experiment_type == "n")
+            else if(exp_type == "n")
             {
                 param_file = param_directory + "control_experiment.csv";
             }
-            else if(experiment_type == "t")
+            else if(exp_type == "t")
             {
                 param_file = param_directory + "loom_training.csv";
             }
-            Console.WriteLine(param_file);
+            else if(exp_type == "v")
+            {
+                param_file = param_directory + "virtualbarrier_experiment.csv";
+            }
             param_parser = new TextFieldParser(param_file);
             { 
                 param_parser.TextFieldType = FieldType.Delimited;
                 param_parser.SetDelimiters(",");
             }
-            
+            experiment_type = exp_type;
             stim_in_progress = false;
             experiment_complete = false;
             pipe_buffer = buffblock;
@@ -218,9 +220,6 @@ namespace EMGU_Stimuli
             }
           }
    
-
-// THIS FUNCTION IS AN ABJECT MESS. No need to stop the experiment if the fish is in the middle. Who cares. 
-// Also, alternate light and darkness trials. 
         private void CheckFreerunStatus()
         {
                 if (stimtype == "freerun")
@@ -233,7 +232,6 @@ namespace EMGU_Stimuli
                         ReadNextTrial();
                     }
                 }
-                // 
                 else
                 {
                     if (experiment_phase > 0 && number_of_crossings < crossing_thresh)
@@ -278,24 +276,20 @@ namespace EMGU_Stimuli
                     }
                     Console.WriteLine("Radial Gradient On");
                     centering_success = RadialGradient(150);
-                    Console.WriteLine("Centering Success Returned");
+                    Console.WriteLine("Centering Success " + centering_success.ToString());
                   //  centering_success = OmrStimulus();
                     EmptyBuffer();
                 }                
                 if (centering_success) 
                 {               
-                    Console.WriteLine("Experiment Duration (s)");
                     Console.WriteLine((experiment_timer.ElapsedMilliseconds / 1000).ToString());
                     still_in_center = GrayBr();
                     // fish must either leave inner arena or move next to a barrier to get a return from GrayBR.                                
                     EmptyBuffer();
                     if (!still_in_center)
                     {
-                        Console.WriteLine("outside ROI");
+                        Console.WriteLine("Outside ROI");
                         number_of_crossings++;
-                        Console.WriteLine("Number Of Crossings");
-                        Console.WriteLine(number_of_crossings.ToString());
-                        //   continue;
                     }
                     else {
                         if (stimtype.Substring(2) == "loom")
@@ -361,7 +355,7 @@ namespace EMGU_Stimuli
             Point looming_coord = new Point();
             Point stimcenter_tank = new Point();
             List<Point> stimcoords = new List<Point>();
-            int distfromfish = 30;
+            int distfromfish = 40;
             double mag = 0;
 
             if (stimtype == "b_loom" || stimtype == "v_loom")
@@ -380,7 +374,7 @@ namespace EMGU_Stimuli
             }
 
             int zvec_z = 1;
-            if(stimtype == "l_loom")
+            if(stimtype == "r_loom" || stimtype == "R_loom")
             {
                 zvec_z = -1;
             }
@@ -445,7 +439,8 @@ namespace EMGU_Stimuli
 
         private bool GrayBr()
         {
-            MCvScalar background_color = new MCvScalar(150, 150, 150);
+            //            MCvScalar background_color = new MCvScalar(150, 150, 150);
+            MCvScalar background_color = new MCvScalar(0, 0, 255);
             MCvScalar pixvals = new MCvScalar(0, 0, 0);
             if (darkness)
             {
@@ -465,6 +460,12 @@ namespace EMGU_Stimuli
                 }
                 img.SetTo(background_color);
                 CvInvoke.Imshow(win1, img);
+                Console.WriteLine("Experiment Type");
+                Console.WriteLine(experiment_type);
+                if(experiment_type == "v")
+                {
+                    DrawVirtualBarriers();
+                }
                 CvInvoke.WaitKey(1000); // One Second minimum timeout? if so implement here
             }
             EmptyBuffer();
@@ -490,8 +491,6 @@ namespace EMGU_Stimuli
                         if (CheckROI(camdata.fishcoord, "return"))
                         {
                             fish_near_barrier = false;
-                            Console.WriteLine(camdata.fishcoord);
-                            Console.WriteLine("Gray BR Exit");
                             return false;
                         }
                     }
@@ -732,6 +731,24 @@ namespace EMGU_Stimuli
 
         }
 
+        private void DrawVirtualBarriers()
+        {
+            double vbradius = barrier_radius_list.Average() * 1.41;
+            //            MCvScalar vbcolor = new MCvScalar(0, 0, 255);
+            MCvScalar vbcolor = new MCvScalar(150, 150, 150);
+            SizeF barriersize = new SizeF((float)vbradius, (float)vbradius);
+            foreach(Point bp in barrier_position_list)
+            {
+                Point bpos = TransformPoint(bp);                
+                Ellipse barrier_ellipse = new Ellipse(bpos, barriersize, 0);
+                RotatedRect brect = barrier_ellipse.RotatedRect; // the rect that bounds the defined ellipseRotatedRect.
+                CvInvoke.Ellipse(img, brect, vbcolor, -1);
+                CvInvoke.Imshow(win1, img); //Show the image
+        //        CvInvoke.WaitKey(1);
+            }
+//            CvInvoke.WaitKey(1);
+        }
+
         private bool WallTap()
         {
             Console.WriteLine("WallTap Initiated");
@@ -906,25 +923,48 @@ namespace EMGU_Stimuli
             // BUILD IN A DELAY BEFORE THE BEGINNING OF LOOM, BUT RECORD FISHLOCATION DURING THIS DELAY:
             int num_stim_displayed = 0;
             stim_timer.Start();
+            bool tapped = false;
             while (true)
             {
                 stim_in_progress = true;
                 var camdata = pipe_buffer.Receive();
                 fishlocations.Add(camdata.fishcoord);
                 loommovie.Write(camdata.roi);
+                if(fishlocations.LongCount() == 2000)
+                {
+                     Console.WriteLine("Looming Complete");                        
+                     break;
+                }
+                
                 Tuple<uint, uint> temptup = new Tuple<uint, uint>(camdata.jay, camdata.buffernumber);
                 buffer_id.Add(temptup);
                 if (stim_timer.ElapsedMilliseconds >= 50) // Each of these should be 50 ms from start of trial. 
 // 50 ms is required so projector refreshes evenly (i.e. every 3 projector refreshes gets a new frame). 
                 {
-                    looming_diam = num_stim_displayed * growth_rate;
+                    if (tapped)
+                    {
+                        looming_diam = 0;
+                    }
+                    else
+                    {
+                        looming_diam = num_stim_displayed * growth_rate;
+                    }
                     looming_size.Height = looming_diam;
                     looming_size.Width = looming_diam;
-                    if (looming_diam > looming_size_thresh)
+                    if (stimtype == "R_loom" || stimtype == "L_loom")
                     {
-                        Console.WriteLine("Looming Complete");                        
-                        break;
+                        if (looming_diam > looming_size_thresh / 3)
+                        {
+                            pyboard.WriteLine("escape_rig.taponce(240)\r");
+                            tapped = true;
+                        }
                     }
+
+                    //if (looming_diam > looming_size_thresh)
+                    //{
+                    //    Console.WriteLine("Looming Complete");                        
+                    //    break;
+                    //}
                     img.SetTo(gray);
                     // TRANSFORM BOTH POINTS FIRST. THEN TAKE THE DIFF. 
                     current_stimcoords = LoomingCoordinate(camdata.fishcoord, camdata.fishcont);
@@ -1024,18 +1064,21 @@ namespace EMGU_Stimuli
             {
                 string trial = param_parser.ReadLine();
                 string[] trial_params = trial.Split(',');
-                Console.WriteLine(trial_params[0]);
+                foreach(string p in trial_params)
+                {
+                    Console.Write(p + ' ');
+                }
                 lightordark = trial_params[0];
                 if (lightordark == "dark") { darkness = true; }
                 else { darkness = false; }
                 stimtype = trial_params[1];
                 if(stimtype == "freerun")
                 {
-                    freerun_mins = Convert.ToInt32(trial_params[3]);
+                    freerun_mins = Convert.ToInt32(trial_params[2]);
                 }
                 else
                 {
-                    trialnumber = Convert.ToInt32(trial_params[3]);
+                    trialnumber = Convert.ToInt32(trial_params[2]);
                 }
             }
             else
