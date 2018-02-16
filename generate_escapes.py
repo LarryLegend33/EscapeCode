@@ -69,7 +69,7 @@ def generate_biasing_looms(dic, numlooms, numtaps, direction):
 def generate_lightdark_barriers(dic, numtrials, freeruns):
     with open(directory + 'lightdark_experiment.csv', 'wb') as csvfile:
         num_trialtypes = 2
-        trialtypes = np.zeros(num_trialtypes)
+        trialcounter = np.zeros(num_trialtypes).astype(np.int)
         exp_file = csv.writer(csvfile, delimiter=' ', quotechar='|', escapechar=' ', quoting=csv.QUOTE_NONE)
         if freeruns:
             exp_file.writerow([dic["freerun_light_barrier"]])
@@ -80,26 +80,26 @@ def generate_lightdark_barriers(dic, numtrials, freeruns):
                 stim = "dark_tap"                
             elif trial == 1:
                 stim = "light_tap_barrier"                
-            exp_file.writerow([dic[stim] + "," + str(trialtypes[trial])])
-            trialtypes[trial] += 1
+            exp_file.writerow([dic[stim] + "," + str(trialcounter[trial])])
+            trialcounter[trial] += 1
 
-def generate_virtualbarriertrials(dic, numtrials, stimtype, inversions):
+def generate_virtualbarriertrials(dic, numtrials, stimtype, inversions): 
     if stimtype == 'loom':
         stim = "loom_virtual"
-    trialtypes = 3
-    triallist = randomize_trials(numtrials, trialtypes)
-    trialcounter = np.zeros(trialtypes)
+    num_trialtypes = 3
+    triallist = randomize_trials(numtrials, num_trialtypes)    
+    trialcounter = np.zeros(num_trialtypes).astype(np.int)
     with open(directory + 'virtualbarrier_experiment.csv', 'wb') as csvfile:
         exp_file = csv.writer(csvfile, delimiter=' ', quotechar='|', escapechar=' ', quoting=csv.QUOTE_NONE)
         for trial in triallist:
             if trial == 0:
-                stim == "light_tap_nobarrier"
-            if trial == 1:
-                stim == "light_tap_virtualbarrier"
-            if trial == 2: 
-                stim == "light_tap_virtualbarrier_inverted"
-            exp_file.writerow([dic[stim] + "," + str(trialtypes[trial])])
-            trialtypes[trial] += 1
+                stim = "light_tap_virtualbarrier"
+            elif trial == 1: 
+                stim = "light_tap_virtualbarrier_inverted"
+            elif trial == 2:
+                stim = "light_tap_nobarrier"
+            exp_file.writerow([dic[stim] + "," + str(trialcounter[trial])])
+            trialcounter[trial] += 1
 
 def randomize_trials(total_trials, num_different_trials):
     trial_list = []
@@ -116,6 +116,6 @@ def randomize_trials(total_trials, num_different_trials):
     return trial_list
 
 generate_minefield_control(exp_dict, 10, "tap")
-generate_lightdark_barriers(exp_dict, 10)
+generate_lightdark_barriers(exp_dict, 10, True)
 generate_biasing_looms(exp_dict, 10, 2, "L")
-generate_virtualbarriertrials(exp_dict, 20, 'tap', False)
+generate_virtualbarriertrials(exp_dict, 24, 'tap', False)
