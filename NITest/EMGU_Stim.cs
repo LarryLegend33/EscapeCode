@@ -34,7 +34,7 @@ namespace EMGU_Stimuli
         public volatile bool start_align, experiment_running, alignment_complete, darkness, stim_in_progress, experiment_complete;
         public volatile int trialnumber, tankwidth, barrier_radius, templatewidth, threshold_radius, threshold_multiplier, freerun_mins, crossing_thresh, experiment_phase, walltrial, number_of_crossings;
         public volatile string experiment_type, experiment_directory;
-        string param_directory, param_file, lightordark;
+        string param_directory, param_file, condition;
         public Mat roi;
         PointF stimcenter;
         Point projector_center, camera_center;
@@ -439,8 +439,11 @@ namespace EMGU_Stimuli
 
         private bool GrayBr()
         {
-            //            MCvScalar background_color = new MCvScalar(150, 150, 150);
-            MCvScalar background_color = new MCvScalar(0, 0, 255);
+            MCvScalar background_color = new MCvScalar(150, 150, 150);
+            if (condition[0] == 'i')
+            {
+                background_color = new MCvScalar(0, 0, 255);
+            }
             MCvScalar pixvals = new MCvScalar(0, 0, 0);
             if (darkness)
             {
@@ -462,7 +465,7 @@ namespace EMGU_Stimuli
                 CvInvoke.Imshow(win1, img);
                 Console.WriteLine("Experiment Type");
                 Console.WriteLine(experiment_type);
-                if(experiment_type == "v")
+                if(experiment_type == "v" && condition[0] != 'n')
                 {
                     DrawVirtualBarriers();
                 }
@@ -675,7 +678,7 @@ namespace EMGU_Stimuli
             string vidstring = "";
             string stimstring = "";
             string buffstring = "";
-            vidstring = experiment_directory + "/tapmovie" + trialnumber.ToString("D2") + "_" + lightordark[0] + ".AVI";
+            vidstring = experiment_directory + "/tapmovie" + trialnumber.ToString("D2") + "_" + condition[0] + ".AVI";
             VideoWriter tapmovie = new VideoWriter(vidstring, 0, 500, new Size(80, 80), false);          
             while (true)
             {
@@ -707,8 +710,8 @@ namespace EMGU_Stimuli
                 }
             }
             tapmovie.Dispose();
-            stimstring = experiment_directory + "/stimulus_trial" + trialnumber.ToString("D2") + "_" + lightordark[0] + ".txt";
-            buffstring = experiment_directory + "/buffid_trial" + trialnumber.ToString("D2") + "_" + lightordark[0] + ".txt";
+            stimstring = experiment_directory + "/stimulus_trial" + trialnumber.ToString("D2") + "_" + condition[0] + ".txt";
+            buffstring = experiment_directory + "/buffid_trial" + trialnumber.ToString("D2") + "_" + condition[0] + ".txt";
             WriteCoordinateFile("/tapresponse_trial", coordlist, trialnumber);
             using (StreamWriter sr = new StreamWriter(stimstring))
             {
@@ -735,7 +738,11 @@ namespace EMGU_Stimuli
         {
             double vbradius = barrier_radius_list.Average() * 1.41;
             //            MCvScalar vbcolor = new MCvScalar(0, 0, 255);
-            MCvScalar vbcolor = new MCvScalar(150, 150, 150);
+            MCvScalar vbcolor = new MCvScalar(0, 0, 255);
+            if(condition[0] == 'i')
+            {
+                vbcolor = new MCvScalar(150, 150, 150);
+            }
             SizeF barriersize = new SizeF((float)vbradius, (float)vbradius);
             foreach(Point bp in barrier_position_list)
             {
@@ -766,7 +773,7 @@ namespace EMGU_Stimuli
             string stimstring = "";
             string buffstring = "";
             int lastframe = 2000;
-            vidstring = experiment_directory + "/wall_tap" + walltrial.ToString("D2") + "_" + lightordark[0] + ".AVI";
+            vidstring = experiment_directory + "/wall_tap" + walltrial.ToString("D2") + "_" + condition[0] + ".AVI";
             VideoWriter tapmovie = new VideoWriter(vidstring, 0, 500, new Size(80, 80), false);
             while (true)
             {
@@ -817,8 +824,8 @@ namespace EMGU_Stimuli
                   }
                 }
             tapmovie.Dispose();
-            stimstring = experiment_directory + "/wallstim_trial" + walltrial.ToString("D2") + "_" + lightordark[0] + ".txt";
-            buffstring = experiment_directory + "/wallbuff_trial" + walltrial.ToString("D2") + "_" + lightordark[0] + ".txt";
+            stimstring = experiment_directory + "/wallstim_trial" + walltrial.ToString("D2") + "_" + condition[0] + ".txt";
+            buffstring = experiment_directory + "/wallbuff_trial" + walltrial.ToString("D2") + "_" + condition[0] + ".txt";
             WriteCoordinateFile("/walltap_trial", coordlist, walltrial);            
             using (StreamWriter sr = new StreamWriter(stimstring))
             {
@@ -872,11 +879,11 @@ namespace EMGU_Stimuli
             string darktrialstring = "";
             if(trialnumber < 10)
             {
-                darktrialstring = experiment_directory + "/darkflash_trial0" + trialnumber.ToString() + "_" + lightordark[0] + ".txt";
+                darktrialstring = experiment_directory + "/darkflash_trial0" + trialnumber.ToString() + "_" + condition[0] + ".txt";
             }
             else
             {
-                darktrialstring = experiment_directory + "/darkflash_trial" + trialnumber.ToString() + "_" + lightordark[0] + ".txt";
+                darktrialstring = experiment_directory + "/darkflash_trial" + trialnumber.ToString() + "_" + condition[0] + ".txt";
             }
 
             using (StreamWriter darkcoords = new StreamWriter(darktrialstring))
@@ -904,7 +911,7 @@ namespace EMGU_Stimuli
             float growth_rate = 1.01f;
             string vidstring = "";
             // GENERATE LISTS OF TIMES FOR EACH POINT ACQUIRED. 
-            vidstring = experiment_directory + "/loom_movie" + trialnumber.ToString("D2") + "_" + lightordark[0] + ".AVI";
+            vidstring = experiment_directory + "/loom_movie" + trialnumber.ToString("D2") + "_" + condition[0] + ".AVI";
             VideoWriter loommovie = new VideoWriter(vidstring, 0, 500, new Size(80, 80), false);
             List<Tuple<uint, uint>> buffer_id = new List<Tuple<uint, uint>>();
             MCvScalar gray = new Bgr(150, 150, 150).MCvScalar;
@@ -914,7 +921,7 @@ namespace EMGU_Stimuli
             List<Point> stimlocations = new List<Point>();
             List<float> times = new List<float>();            
             string barrier_string = "";
-            barrier_string = experiment_directory + "/barriervarbs_trial0" + trialnumber.ToString("D2") + "_" + lightordark[0] + ".txt";
+            barrier_string = experiment_directory + "/barriervarbs_trial0" + trialnumber.ToString("D2") + "_" + condition[0] + ".txt";
             using (StreamWriter barrier_varbs = new StreamWriter(barrier_string))
             {
                 barrier_varbs.WriteLine(barrier_center.ToString());
@@ -966,6 +973,10 @@ namespace EMGU_Stimuli
                     //    break;
                     //}
                     img.SetTo(gray);
+                    if(experiment_type == "v" && condition[0] != 'n')
+                    {
+                        DrawVirtualBarriers();
+                    }
                     // TRANSFORM BOTH POINTS FIRST. THEN TAKE THE DIFF. 
                     current_stimcoords = LoomingCoordinate(camdata.fishcoord, camdata.fishcont);
                     stimlocations.Add(current_stimcoords[1]);
@@ -1048,7 +1059,7 @@ namespace EMGU_Stimuli
 
         private void WriteCoordinateFile(string file_id, List<Point> coordinate_list, int trial)
         {            
-            string file_string = experiment_directory + file_id + trial.ToString("D2") + "_" + lightordark[0] + ".txt";
+            string file_string = experiment_directory + file_id + trial.ToString("D2") + "_" + condition[0] + ".txt";
             using (StreamWriter sr = new StreamWriter(file_string))
             {
                 foreach (Point coord in coordinate_list)
@@ -1068,8 +1079,8 @@ namespace EMGU_Stimuli
                 {
                     Console.Write(p + ' ');
                 }
-                lightordark = trial_params[0];
-                if (lightordark == "dark") { darkness = true; }
+                condition = trial_params[0];
+                if (condition == "dark") { darkness = true; }
                 else { darkness = false; }
                 stimtype = trial_params[1];
                 if(stimtype == "freerun")
