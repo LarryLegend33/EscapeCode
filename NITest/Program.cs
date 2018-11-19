@@ -119,7 +119,10 @@ namespace NITest
             CvInvoke.NamedWindow(camerawindow);
             int frameWidth = 1280;
             int frameHeight = 1024;
-            uint bufferCount = 3; 
+            uint bufferCount = 3;
+// Could try changing this to 2 or 100 
+// Checked and there is no card memory. It makes a buffer on system mem. Tried increasing virtual memory so 
+// HD can be used as RAM. Allocated an additional 32 GB to virtual mem. 
             uint buff_out = 0;
             int numchannels = 1;   
             MCvScalar gray = new MCvScalar(128,128,128);                   
@@ -348,10 +351,10 @@ namespace NITest
                         phasebounds.Add(xycounter);
                     }
                 }
-                if (j % 100 == 0 && !experiment.stim_in_progress) 
+                if (j % 100 == 0 && !experiment.stim_in_progress)
                 {
-                //    CvInvoke.Circle(cvimage, fishcontour_correct.center, 2,new MCvScalar(255, 255, 0)); 
-                    CvInvoke.Circle(cvimage, fishcontour_correct.com, 2,new MCvScalar(255, 255, 255));
+                    //    CvInvoke.Circle(cvimage, fishcontour_correct.center, 2,new MCvScalar(255, 255, 0)); 
+                    CvInvoke.Circle(cvimage, fishcontour_correct.com, 2, new MCvScalar(255, 255, 255));
                     if (halfmoon || stonehenge || minefield || minefield_control)
                     {
                         for (int ind = 0; ind < barrierlist.Count; ind++)
@@ -363,19 +366,23 @@ namespace NITest
                     }
                     CvInvoke.Imshow(camerawindow, cvimage);
                     CvInvoke.WaitKey(1);
-                    byte[,] mode_frame = new byte[frameHeight, frameWidth];
-                    Buffer.BlockCopy(data_2D, 0, mode_frame, 0, data_2D.Length);
-                    imglist.Add(mode_frame);
-                    if (imglist.LongCount() == 500)
+                    if (j % 2000 == 0)
                     {
-                        var modethread = new Thread(() => ModeWrapper(imglist, mode_reset));
-                        modethread.Start();
-                    }
-                    if (experiment.experiment_complete)
-                    {
-                        break;
+                        byte[,] mode_frame = new byte[frameHeight, frameWidth];
+                        Buffer.BlockCopy(data_2D, 0, mode_frame, 0, data_2D.Length);
+                        imglist.Add(mode_frame);
+                        if (imglist.LongCount() == 40)
+                        {
+                            var modethread = new Thread(() => ModeWrapper(imglist, mode_reset));
+                            modethread.Start();
+                        }
                     }
                 }
+               if (experiment.experiment_complete)
+               {
+                    break;
+               }
+                  
                 j = buff_out + 1;
             }
 
@@ -712,9 +719,13 @@ namespace NITest
 
         public static void ModeWrapper(List<byte[,]> md_images, AutoResetEvent md_reset)
         {
+
+// Take first X values of list if you think mode calc will take longer than the next addition to the list
             Console.WriteLine("ModeWrapper Called");
-            List<byte[,]> first120 = md_images.Take(500).ToList();
-            imagemode = FindMode(first120);
+            // List<byte[,]> first120 = md_images.Take(500).ToList();
+            List<byte[,]> mdlist = md_images.Take(40).ToList();
+            imagemode = FindMode(mdlist);
+  //          imagemode = FindMode(md_images);
             modeimage_barrier.SetTo(imagemode);
             md_reset.Set();
         }

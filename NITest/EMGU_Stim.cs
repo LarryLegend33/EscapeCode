@@ -548,6 +548,12 @@ namespace EMGU_Stimuli
                 {
                     return true;
                 }
+                // This is a catch for when the fish is inside the barrier. Don't want trials where fish emerges from barrier, only want when they first approach it. 
+                // else if(vmag < barrier_radius)
+//           {
+  //              Thread.Sleep(5000);
+    //                EmptyBuffer();
+      //          }
                 else
                 {
                     return false;
