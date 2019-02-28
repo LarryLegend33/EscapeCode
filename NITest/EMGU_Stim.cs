@@ -33,8 +33,8 @@ namespace EMGU_Stimuli
         public Point virtual_barrier_center,fish_center, barrier_center,projcenter_camcoords, tankcenter;
         public volatile bool start_align, experiment_running, alignment_complete, darkness, stim_in_progress, experiment_complete;
         public volatile int trialnumber, tankwidth, barrier_radius, templatewidth, threshold_radius, threshold_multiplier, freerun_mins, crossing_thresh, experiment_phase, walltrial, number_of_crossings;
-        public volatile string experiment_type, experiment_directory;
-        string param_directory, param_file, condition;
+        public volatile string experiment_type, experiment_directory, condition;
+        string param_directory, param_file;  // condition;
         public Mat roi;
         PointF stimcenter;
         Point projector_center, camera_center;
@@ -44,7 +44,7 @@ namespace EMGU_Stimuli
         String win1,stimtype;
         AutoResetEvent event1, event2;
         SerialPort pyboard = new SerialPort("COM6",115200);
-        public List<int> barrier_radius_list;
+        public List<int> barrier_radius_list, num_grayframes, num_grayframes_d;
         public List<Point> barrier_position_list;
         BufferBlock<NITest.Program.CamData> pipe_buffer;
         TextFieldParser param_parser;
@@ -79,6 +79,8 @@ namespace EMGU_Stimuli
             pipe_buffer = buffblock;
             barrier_position_list = new List<Point>();
             barrier_radius_list = new List<int>();
+            num_grayframes = new List<int>();
+            num_grayframes_d = new List<int>();
             walltrial = 0;
             freerun_mins = 0;
             threshold_multiplier = 3;
@@ -90,12 +92,12 @@ namespace EMGU_Stimuli
             alignment_complete = true;
             projector_center = new Point
             {
-                X = 1192,
-                Y = 462,
+                X = 1169,
+                Y = 466,
             };
-            tankwidth = 952;
+            tankwidth = 962;
             //
-            templatewidth = 774;
+            templatewidth= 774;
             roi = new Mat(new Size(80,80), Emgu.CV.CvEnum.DepthType.Cv8U, 1);
             tankcenter = new Point{X = 640, Y = 512,};
             barrier_radius = 75;
@@ -494,12 +496,28 @@ namespace EMGU_Stimuli
                         if (CheckROI(camdata.fishcoord, "return"))
                         {
                             fish_near_barrier = false;
+                            if (condition[0] == 'd')
+                            {
+                                num_grayframes_d.Add((int)fishlocations.LongCount());
+                            }
+                            else
+                            {
+                                num_grayframes.Add((int)fishlocations.LongCount());
+                            }
                             return false;
                         }
                     }
                     if (fish_near_barrier) { break; }
                     trial_clock.Restart();
                 }
+            }
+            if (condition[0] == 'd')
+            {
+                num_grayframes_d.Add((int)fishlocations.LongCount());
+            }
+            else
+            {
+                num_grayframes.Add((int)fishlocations.LongCount());
             }
             WriteCoordinateFile("/fishcoords_gray_trial", fishlocations, trialnumber);
             return true;

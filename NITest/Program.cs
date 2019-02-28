@@ -63,15 +63,17 @@ namespace NITest
 
             var options = new DataflowBlockOptions();
             options.BoundedCapacity = 10;
-            var pipe_buffer = new BufferBlock<CamData>(options);           
+            var pipe_buffer = new BufferBlock<CamData>(options);
             Point tank_center = new Point
             {
                 X = 640,
                 Y = 512,
             };
             int roidim = 80;
+
             string camera_id = "img0"; //this is the ID of the NI-IMAQ board in NI MAX. 
             var _session = new ImaqSession(camera_id);
+            bool reuse_background = false;
             bool drew_barriers = false;
             bool halfmoon = false;
             bool stonehenge = false;
@@ -79,7 +81,8 @@ namespace NITest
             bool minefield_control = false;
             Console.WriteLine("Enter FishID   ");
             String fishid = Console.ReadLine();
-            String exp_directory = "C:/Users/Deadpool/Desktop/Results/" + fishid;
+            String home_directory = "C:/Users/Deadpool/Desktop/Results/";
+            String exp_directory = home_directory + fishid;
             bool exists_already = System.IO.Directory.Exists(exp_directory);
             if (!exists_already)
             {
@@ -93,7 +96,7 @@ namespace NITest
                 {
                     System.IO.Directory.CreateDirectory(exp_directory);
                 }
-                else if (overwrite == "c") {}
+                else if (overwrite == "c") { }
                 else
                 {
                     Environment.Exit(0);
@@ -107,6 +110,12 @@ namespace NITest
             int light_location_Y = Convert.ToInt32(lightloc_Y);
             Console.WriteLine("Enter Experiment Type  ");
             String exp_string = Console.ReadLine();
+            Console.WriteLine("Use old background?  ");
+            String reuse = Console.ReadLine();
+            if (reuse == "y")
+            {
+                reuse_background = true;
+            }
             if (exp_string == "n" || exp_string == "t" || exp_string == "v")
             {
                 minefield_control = true;
@@ -120,22 +129,22 @@ namespace NITest
             int frameWidth = 1280;
             int frameHeight = 1024;
             uint bufferCount = 3;
-// Could try changing this to 2 or 100 
-// Checked and there is no card memory. It makes a buffer on system mem. Tried increasing virtual memory so 
-// HD can be used as RAM. Allocated an additional 32 GB to virtual mem. 
+            // Could try changing this to 2 or 100 
+            // Checked and there is no card memory. It makes a buffer on system mem. Tried increasing virtual memory so 
+            // HD can be used as RAM. Allocated an additional 32 GB to virtual mem. 
             uint buff_out = 0;
-            int numchannels = 1;   
-            MCvScalar gray = new MCvScalar(128,128,128);                   
+            int numchannels = 1;
+            MCvScalar gray = new MCvScalar(128, 128, 128);
             List<ContourProperties> barrierlist = new List<ContourProperties>();
-            ContourProperties fishcontour = new ContourProperties();            
+            ContourProperties fishcontour = new ContourProperties();
             ContourProperties fishcontour_correct = new ContourProperties();
             ContourProperties barrier = new ContourProperties();
             System.Drawing.Size framesize = new System.Drawing.Size(frameWidth, frameHeight);
-            System.Drawing.Size roi_size = new System.Drawing.Size(roidim,roidim);
+            System.Drawing.Size roi_size = new System.Drawing.Size(roidim, roidim);
             Mat cvimage = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
-            Mat modeimage_barrier_roi =  new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
+            Mat modeimage_barrier_roi = new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
             Mat modeimage = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
-//            Mat modeimage_barrier = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
+            //            Mat modeimage_barrier = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
             Mat maxproj_cv = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
             AutoResetEvent event1 = new AutoResetEvent(true);
             AutoResetEvent event2 = new AutoResetEvent(false);
@@ -143,9 +152,9 @@ namespace NITest
             byte[,] data_2D = new byte[frameHeight, frameWidth];
             byte[,] data_2D_roi = new byte[roidim, roidim];
             byte[,] imagemode_nobarrier = new byte[frameHeight, frameWidth];
-            byte[,] maxprojimage = new byte[frameHeight, frameWidth];      
+            byte[,] maxprojimage = new byte[frameHeight, frameWidth];
             ImaqBuffer image = null;
-            ImaqBufferCollection buffcollection = _session.CreateBufferCollection((int)bufferCount,ImaqBufferCollectionType.VisionImage); 
+            ImaqBufferCollection buffcollection = _session.CreateBufferCollection((int)bufferCount, ImaqBufferCollectionType.VisionImage);
             _session.RingSetup(buffcollection, 0, false);
             _session.Acquisition.AcquireAsync();
             RecordAndStim experiment = new RecordAndStim(event1, event2, pipe_buffer, exp_string);
@@ -154,16 +163,16 @@ namespace NITest
             stimthread.Start();
 
             // THIS GRABS THE MODE FOR THE TANK IN GENERAL BEFORE ALIGNMENT
-            
+
             if (!experiment.alignment_complete)
             {
-                    CvInvoke.WaitKey(0);
-                    imglist = GetImageList(_session, 500, 10);
-                    maxprojimage = FindMaxProjection(imglist);
-                    maxproj_cv.SetTo(maxprojimage);
-                    imglist.Clear();
-                    CvInvoke.Imshow(camerawindow, maxproj_cv);
-                    CvInvoke.WaitKey(0);
+                CvInvoke.WaitKey(0);
+                imglist = GetImageList(_session, 500, 10);
+                maxprojimage = FindMaxProjection(imglist);
+                maxproj_cv.SetTo(maxprojimage);
+                imglist.Clear();
+                CvInvoke.Imshow(camerawindow, maxproj_cv);
+                CvInvoke.WaitKey(0);
             }
 
             // IF CAMERA IS NOT YET ALIGNED TO THE PROJECTOR, THIS LOOP FINDS THE LOCATION OF THE CALIBRATION CONTOUR THE EXPERIMENT CLASS IS PLACING ON THE PROJECTOR.
@@ -204,30 +213,45 @@ namespace NITest
             // Now you've put the IR filter back over the camera and are ready to do an experiment.             
             // Get mode of image with no barrier present so you can background subtract and find the barriers and fish.  
             imglist.Clear();
-            imglist = GetImageList(_session, 5000, 400);
-            imagemode_nobarrier = FindMode(imglist);
-            modeimage.SetTo(imagemode_nobarrier);
-            imglist.Clear();
-            CvInvoke.Imshow(camerawindow, modeimage);
-            CvInvoke.WaitKey(0);
+            if (reuse_background)
+            {
+                modeimage = CvInvoke.Imread(home_directory + "/background_nobar" + exp_string + ".tif", 0);
+            }
+            else
+            {
+                imglist = GetImageList(_session, 5000, 400);
+                imagemode_nobarrier = FindMode(imglist);
+                modeimage.SetTo(imagemode_nobarrier);
+                imglist.Clear();
+                CvInvoke.Imshow(camerawindow, modeimage);
+                CvInvoke.WaitKey(0);
+            }
 
+            // Here you have just added barriers to the tank. Now get a new mode that contains the barriers for use in background subtraction to find fish 
+            // and for localizing barriers. 
 
-// Here you have just added barriers to the tank. Now get a new mode that contains the barriers for use in background subtraction to find fish 
-// and for localizing barriers. 
-           
             if (halfmoon || stonehenge || minefield)
             {
                 imglist = GetImageList(_session, 5000, 400);
-                imagemode = FindMode(imglist);
-                modeimage_barrier.SetTo(imagemode);
+                if (reuse_background)
+                {
+
+                    modeimage_barrier = CvInvoke.Imread(home_directory + "/background_" + exp_string + ".tif", 0);
+                }
+                else
+                {
+                    imagemode = FindMode(imglist);
+                    modeimage_barrier.SetTo(imagemode);
+                }
+
                 modeimage_barrier.Save(exp_directory + "/background_" + exp_string + ".tif");
                 imglist.Clear();
                 barrierlist = BarrierLocations(modeimage_barrier, modeimage);
-                for(int ind = 0; ind < barrierlist.Count; ind++)
+                for (int ind = 0; ind < barrierlist.Count; ind++)
                 {
                     experiment.barrier_position_list.Add(barrierlist[ind].center);
                     experiment.barrier_radius_list.Add(barrierlist[ind].height / 2);
-                }                                
+                }
             }
             else if (minefield_control)
             {
@@ -235,11 +259,11 @@ namespace NITest
                 modeimage_barrier.Save(exp_directory + "/background_" + exp_string + ".tif");
 
                 barrierlist = GenerateVirtualBarriers(experiment.tankwidth, tank_center.X, tank_center.Y);
-                for(int ind = 0; ind < barrierlist.Count; ind++)
+                for (int ind = 0; ind < barrierlist.Count; ind++)
                 {
                     experiment.barrier_position_list.Add(barrierlist[ind].center);
                     experiment.barrier_radius_list.Add(barrierlist[ind].height / 2);
-                }                                
+                }
             }
 
             using (StreamWriter barrierfile = new StreamWriter(exp_directory + "/barrierstruct_" + exp_string + ".txt"))
@@ -256,10 +280,10 @@ namespace NITest
                     barrierfile.WriteLine(barrierlist[bar].height.ToString());
                 }
             }
-                           
+
             CvInvoke.Imshow(camerawindow, modeimage_barrier);
             CvInvoke.WaitKey(0);
-            
+
 
             if (halfmoon) //THIS IS BECAUSE YOU TAKE THE BARRIER AWAY AFTER IT FINDS THE HOLE. IE FOR HALFMOON TRIALS, YOU FIRST KEEP THE HALFMOON THERE FOR MODEIMAGE, THEN ADD A BARRIER THE SIZE OF THE HOLE FOR FINDING OF THE HOLE OF THE BARRIER. IF YOU WANT TO RUN STONEHENGE OR HALFMOON, DECLARE MINEFIELD_CONTROL AS TRUE, but don't draw barriers. 
             {
@@ -269,7 +293,7 @@ namespace NITest
 
 
             // IMAGE ACQUISITION AND FISH FINDING. 
-//            Idea is to first acquire the image and turn it into a cvimage matrix. find the fish by finding the largest contour on a background subtracted and thresholded image (LargestContour function).  Each time you find the fish, store its coords so you can just search within a small ROI on the next frame. If you lose the fish, go back out to full frame and find it again. 
+            //            Idea is to first acquire the image and turn it into a cvimage matrix. find the fish by finding the largest contour on a background subtracted and thresholded image (LargestContour function).  Each time you find the fish, store its coords so you can just search within a small ROI on the next frame. If you lose the fish, go back out to full frame and find it again. 
             Point f_center = new Point();
             Mat cv_roi = new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
             image = _session.Acquisition.Extract((uint)0, out buff_out);
@@ -278,11 +302,11 @@ namespace NITest
             int xycounter = 0;
             Console.WriteLine("j followed by buff_out");
             Console.WriteLine(j.ToString());
-            Console.WriteLine(buff_out.ToString());            
+            Console.WriteLine(buff_out.ToString());
             List<Point> coordlist = new List<Point>();
             List<int> phasebounds = new List<int>();
             while (true)
-            {           
+            {
                 if (mode_reset.WaitOne(0))
                 {
                     Console.WriteLine("Clearing Imagelist");
@@ -294,21 +318,21 @@ namespace NITest
                 {
                     data_2D = image.ToPixelArray().U8;
                 }
-                catch(NationalInstruments.Vision.VisionException e)
+                catch (NationalInstruments.Vision.VisionException e)
                 {
                     Console.WriteLine(e);
                     continue;
-                }                
+                }
 
                 byte[] stim_pixel_readout = new byte[100];
                 for (int pix = 0; pix < 100; pix++)
                 {
-                    stim_pixel_readout[pix] = data_2D[light_location_Y, light_location_X+pix]; 
-                }              
+                    stim_pixel_readout[pix] = data_2D[light_location_Y, light_location_X + pix];
+                }
                 cvimage.SetTo(data_2D);
                 fishcontour = FishContour(cvimage, modeimage_barrier, tank_center, barrierlist, minefield_control);
 
-// com makes sure that the head is near the barrier. 
+                // com makes sure that the head is near the barrier. 
                 if (fishcontour.height != 0)
                 {
                     fishcontour_correct = fishcontour;
@@ -337,8 +361,8 @@ namespace NITest
                     data_2D_roi = SliceROI(data_2D, f_center.X, f_center.Y, roidim);
                 }
                 cv_roi = new Mat(roi_size, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
-                cv_roi.SetTo(data_2D_roi); 
-                
+                cv_roi.SetTo(data_2D_roi);
+
                 CamData camdat = new CamData(cv_roi, f_center, fishcontour_correct, buff_out, j, stim_pixel_readout);
                 pipe_buffer.Post(camdat);
                 if (j % 10 == 0)
@@ -366,28 +390,31 @@ namespace NITest
                     }
                     CvInvoke.Imshow(camerawindow, cvimage);
                     CvInvoke.WaitKey(1);
-                    if (j % 2000 == 0)
+                    if (j % 1000 == 0)
                     {
                         byte[,] mode_frame = new byte[frameHeight, frameWidth];
                         Buffer.BlockCopy(data_2D, 0, mode_frame, 0, data_2D.Length);
                         imglist.Add(mode_frame);
                         if (imglist.LongCount() == 40)
                         {
-                            var modethread = new Thread(() => ModeWrapper(imglist, mode_reset));
+                            var modethread = new Thread(() => ModeWrapper(imglist, mode_reset, experiment, exp_directory));
                             modethread.Start();
                         }
                     }
                 }
-               if (experiment.experiment_complete)
-               {
+                if (experiment.experiment_complete)
+                {
                     break;
-               }
-                  
+                }
+
                 j = buff_out + 1;
             }
-
+            modeimage_barrier.Save(home_directory + "/background_" + exp_string + ".tif");
+            modeimage.Save(home_directory + "/background_nobar" + exp_string + ".tif");
             string experiment_string = exp_directory + "/all_xycoords_" + exp_string + ".txt";
             string phasestring = exp_directory + "/phase_" + exp_string + ".txt";
+            string numframes_gray = exp_directory + "/numframesgray.txt";
+            string numframes_gray_dark = exp_directory + "/numframesgray_dark.txt";
             using (StreamWriter sr = new StreamWriter(experiment_string))
             {
                 foreach (Point fishpoint in coordlist)
@@ -402,14 +429,26 @@ namespace NITest
                     sr.WriteLine(phase.ToString());
                 }
             }
+            using (StreamWriter sr = new StreamWriter(numframes_gray))
+            {
+                foreach (int ng in experiment.num_grayframes)
+                {
+                    sr.WriteLine(ng.ToString());
+                }
+            }
+            using (StreamWriter sr = new StreamWriter(numframes_gray_dark))
+            {
+                foreach (int ngd in experiment.num_grayframes_d)
+                {
+                    sr.WriteLine(ngd.ToString());
+                }
+            }
 
-            
-
-          
 
 
 
-        }
+
+    }
 
         static ContourProperties FishContour(Mat image_raw, Mat background, Point tc, List<ContourProperties> blist, bool control)
         {
@@ -693,8 +732,8 @@ namespace NITest
 
 // ON MOST RECENT BUFF OUT AFTER CALIBRATION, ASK FOR NEXT BUFFER TO START. 
 
-        static List<byte[,]> GetImageList(ImaqSession ses, int numframes, int mod)
-        {
+        static List<byte[,]> GetImageList(ImaqSession ses, int numframes, int mod) { 
+     
 
             int frheight = 1024;
             int frwidth = 1280;
@@ -717,7 +756,7 @@ namespace NITest
         }
 
 
-        public static void ModeWrapper(List<byte[,]> md_images, AutoResetEvent md_reset)
+        public static void ModeWrapper(List<byte[,]> md_images, AutoResetEvent md_reset, RecordAndStim exp, String exp_d)
         {
 
 // Take first X values of list if you think mode calc will take longer than the next addition to the list
@@ -727,6 +766,7 @@ namespace NITest
             imagemode = FindMode(mdlist);
   //          imagemode = FindMode(md_images);
             modeimage_barrier.SetTo(imagemode);
+            modeimage_barrier.Save(exp_d + "/background_" + exp.trialnumber.ToString("D2") + "_" + exp.condition[0] + ".tif");
             md_reset.Set();
         }
 
@@ -793,5 +833,6 @@ namespace NITest
         }
     }
     }
+
 
 
