@@ -236,7 +236,7 @@ namespace EMGU_Stimuli
                 }
                 else
                 {
-                    if (experiment_phase > 0 && number_of_crossings < crossing_thresh)
+                    if (condition[0] != 'n' && experiment_phase > 0 && number_of_crossings < crossing_thresh)
                     {
                         Console.WriteLine("Experiment Terminated--Crossing Threshold Not Reached");
                         experiment_complete = true;
