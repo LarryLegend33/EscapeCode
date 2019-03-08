@@ -413,7 +413,7 @@ namespace NITest
             modeimage.Save(home_directory + "/background_nobar" + exp_string + ".tif");
             string experiment_string = exp_directory + "/all_xycoords_" + exp_string + ".txt";
             string phasestring = exp_directory + "/phase_" + exp_string + ".txt";
-            string numframes_gray = exp_directory + "/numframesgray.txt";
+            string numframes_gray = exp_directory + "/numframesgray_" + exp_string + ".txt";
             string numframes_gray_dark = exp_directory + "/numframesgray_dark.txt";
             using (StreamWriter sr = new StreamWriter(experiment_string))
             {
@@ -436,14 +436,16 @@ namespace NITest
                     sr.WriteLine(ng.ToString());
                 }
             }
-            using (StreamWriter sr = new StreamWriter(numframes_gray_dark))
+            if (exp_string == "b")
             {
-                foreach (int ngd in experiment.num_grayframes_d)
+                using (StreamWriter sr = new StreamWriter(numframes_gray_dark))
                 {
-                    sr.WriteLine(ngd.ToString());
+                    foreach (int ngd in experiment.num_grayframes_d)
+                    {
+                        sr.WriteLine(ngd.ToString());
+                    }
                 }
             }
-
 
 
 
