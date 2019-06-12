@@ -488,7 +488,8 @@ namespace EMGU_Stimuli
                     {
                         barrier_center = barrier_position_list[ind];
                         barrier_radius = barrier_radius_list[ind];
-                        if (CheckROI(camdata.fishcoord, "barrier"))
+                //        if (CheckROI(camdata.fishcoord, "barrier", 36 * (trialnumber % 3) + 18))
+                        if (CheckROI(camdata.fishcoord, "barrier", 54 + 54 *(trialnumber % 2)))
                         {
                             fish_near_barrier = true;
                             break;
@@ -550,11 +551,13 @@ namespace EMGU_Stimuli
             return newpoint;
         }
 
-        private bool CheckROI(Point xypoint,string barrier_or_center)
+        private bool CheckROI(Point xypoint, string barrier_or_center, int thresh_distance = 18, int min_thresh_distance = 5)
         {
-            int min_thresh_distance = 5;
+           // int min_thresh_distance = 5;
             // Thresh distance was previously 15. 
-            int thresh_distance = 18;
+// FOR ALL OF OLIVIAS FIRST SET OF DATA, BARRIERS WERE 112 in DIAMETER AND
+// MINTHRESH WAS 5, THRESHDIST WAS 18. 
+           // int thresh_distance = 18;
             int center_thresh = 200;
             int return_roi = 350;
             int wall_thresh = 440;
@@ -682,7 +685,8 @@ namespace EMGU_Stimuli
 
             }
 // This has to be fixed to take from the pipe and use camdata.fishcoords 
-            if (CheckROI(fish_center,"barrier"))
+            
+            if (CheckROI(fish_center,"barrier", 36 * (trialnumber % 3) + 18))
             {
                 return true;
             }
@@ -716,7 +720,8 @@ namespace EMGU_Stimuli
                 framecount++;
                 if (framecount == proximity_frames)
                 {
-                    if (CheckROI(camdata.fishcoord, "barrier"))
+                 //   if (CheckROI(camdata.fishcoord, "barrier", 36 * (trialnumber % 3) + 18))
+                    if (CheckROI(camdata.fishcoord, "barrier", 54 + 54 *(trialnumber %2)))
                     {
                         pyboard.WriteLine("escape_rig.taponce(240)\r");                        
                     }
