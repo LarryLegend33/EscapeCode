@@ -32,7 +32,7 @@ namespace EMGU_Stimuli
     {
         public Point virtual_barrier_center,fish_center, barrier_center,projcenter_camcoords, tankcenter;
         public volatile bool start_align, experiment_running, alignment_complete, darkness, stim_in_progress, experiment_complete;
-        public volatile int trialnumber, tankwidth, barrier_radius, templatewidth, threshold_radius, threshold_multiplier, freerun_mins, crossing_thresh, experiment_phase, walltrial, number_of_crossings;
+        public volatile int trialnumber, tankwidth, barrier_radius, templatewidth, threshold_radius, threshold_multiplier, freerun_mins, crossing_thresh, experiment_phase, walltrial, number_of_crossings, barrier_max_dist, barrier_min_dist;
         public volatile string experiment_type, experiment_directory, condition;
         string param_directory, param_file;  // condition;
         public Mat roi;
@@ -43,7 +43,7 @@ namespace EMGU_Stimuli
         FilterFlipper mymotor;
         String win1,stimtype;
         AutoResetEvent event1, event2;
-        SerialPort pyboard = new SerialPort("COM6",115200);
+        SerialPort pyboard = new SerialPort("COM8", 15200);
         public List<int> barrier_radius_list, num_grayframes, num_grayframes_d;
         public List<Point> barrier_position_list;
         BufferBlock<NITest.Program.CamData> pipe_buffer;
@@ -85,6 +85,10 @@ namespace EMGU_Stimuli
             freerun_mins = 0;
             threshold_multiplier = 3;
             threshold_radius = 40;
+            // HANNA! CHANGE THESE ONES FOR DISTANCE CHANGES. twice as far is 36 and 23
+            // 3 times further is 54 and 41
+            barrier_max_dist = 18;
+            barrier_min_dist = 5;
             crossing_thresh = 2;
             experiment_phase = 0;
             number_of_crossings = 0;
@@ -277,7 +281,9 @@ namespace EMGU_Stimuli
                         mymotor.SetPosition(1, 1000);
                     }
                     Console.WriteLine("Radial Gradient On");
+                    // 
                     centering_success = RadialGradient(150);
+                    //centering_success = GrayBr();
                     Console.WriteLine("Centering Success " + centering_success.ToString());
                   //  centering_success = OmrStimulus();
                     EmptyBuffer();
@@ -442,10 +448,11 @@ namespace EMGU_Stimuli
         private bool GrayBr()
         {
             MCvScalar background_color = new MCvScalar(150, 150, 150);
-            if (condition[0] == 'i')
-            {
-                background_color = new MCvScalar(0, 0, 255);
-            }
+            //            MCvScalar background_color = new MCvScalar(0, 0, 255);
+//            if (condition[0] == 'i')
+  //          {
+    //            background_color = new MCvScalar(0, 0, 255);
+      //      }
             MCvScalar pixvals = new MCvScalar(0, 0, 0);
             if (darkness)
             {
@@ -488,8 +495,9 @@ namespace EMGU_Stimuli
                     {
                         barrier_center = barrier_position_list[ind];
                         barrier_radius = barrier_radius_list[ind];
-                //        if (CheckROI(camdata.fishcoord, "barrier", 36 * (trialnumber % 3) + 18))
-                        if (CheckROI(camdata.fishcoord, "barrier", 54 + 54 *(trialnumber % 2)))
+                        //        if (CheckROI(camdata.fishcoord, "barrier", 36 * (trialnumber % 3) + 18))
+                        //                        if (CheckROI(camdata.fishcoord, "barrier", 54 + 54 *(trialnumber % 2)))
+                        if (CheckROI(camdata.fishcoord, "barrier", barrier_max_dist, barrier_min_dist))
                         {
                             fish_near_barrier = true;
                             break;
@@ -558,7 +566,7 @@ namespace EMGU_Stimuli
 // FOR ALL OF OLIVIAS FIRST SET OF DATA, BARRIERS WERE 112 in DIAMETER AND
 // MINTHRESH WAS 5, THRESHDIST WAS 18. 
            // int thresh_distance = 18;
-            int center_thresh = 200;
+            int center_thresh = 200; // 200 for four barriers and 349 for giant barrier
             int return_roi = 350;
             int wall_thresh = 440;
             double vmag = 0;
@@ -638,7 +646,6 @@ namespace EMGU_Stimuli
             virtual_location.Y = virtual_y_coord;
             return virtual_location;            
         }
-
         private bool SlowDim(string projector_or_oh) // PUT TEXT FILE OF POSITIONS HERE
         {
             int led_val = 100;
@@ -682,11 +689,12 @@ namespace EMGU_Stimuli
                         break;
                     }
                 }
-
             }
 // This has to be fixed to take from the pipe and use camdata.fishcoords 
             
-            if (CheckROI(fish_center,"barrier", 36 * (trialnumber % 3) + 18))
+            if (CheckROI(fish_center,"barrier", barrier_max_dist, barrier_min_dist))
+
+//                36 * (trialnumber % 3) + 18)) ????
             {
                 return true;
             }
@@ -720,8 +728,9 @@ namespace EMGU_Stimuli
                 framecount++;
                 if (framecount == proximity_frames)
                 {
-                 //   if (CheckROI(camdata.fishcoord, "barrier", 36 * (trialnumber % 3) + 18))
-                    if (CheckROI(camdata.fishcoord, "barrier", 54 + 54 *(trialnumber %2)))
+                 //   if (CheckROI(camdata.fishcoord, "barrier", 36 * (trialnumber % 3) + 18)) RO trials
+                 //   if (CheckROI(camdata.fishcoord, "barrier", 108) big barrier
+                    if (CheckROI(camdata.fishcoord, "barrier", barrier_max_dist, barrier_min_dist))
                     {
                         pyboard.WriteLine("escape_rig.taponce(240)\r");                        
                     }
@@ -768,9 +777,11 @@ namespace EMGU_Stimuli
             double vbradius = barrier_radius_list.Average() * 1.41;
             //            MCvScalar vbcolor = new MCvScalar(0, 0, 255);
             MCvScalar vbcolor = new MCvScalar(0, 0, 255);
+//            MCvScalar vbcolor = new MCvScalar(255, 255, 255);
             if(condition[0] == 'i')
             {
                 vbcolor = new MCvScalar(150, 150, 150);
+//                vbcolor = new MCvScalar(255, 255, 255);
             }
             SizeF barriersize = new SizeF((float)vbradius, (float)vbradius);
             foreach(Point bp in barrier_position_list)
@@ -1035,7 +1046,7 @@ namespace EMGU_Stimuli
             MCvScalar backgroundcolor = new Bgr(255, 255, 255).MCvScalar;
             MCvScalar black = new Bgr(0, 0, 0).MCvScalar;
             img.SetTo(black);
-            // generate a radial gradient stimulus centered on projcenter_x. largestcircle = templatewidth. 
+            // generate a radial gradient8 stimulus centered on projcenter_x. largestcircle = templatewidth. 
             float increment = (float)templatewidth / (float)maxluminance;
             int outer_time_threshold = 300000;
             Mat radial_grad = new Mat(2000, 2000, DepthType.Cv8U, 3);
@@ -1045,6 +1056,7 @@ namespace EMGU_Stimuli
             for (int pixval = 0; pixval <= maxluminance; pixval += 3)
             {
                 MCvScalar color = new MCvScalar(pixval, pixval, pixval);
+               // MCvScalar color = new MCvScalar(0, 0, pixval);
                 float radius = (maxluminance - pixval) * increment;
                 Ellipse grad_circle = new Ellipse(projector_center, new SizeF(radius, radius), 0);
                 RotatedRect grad_rect = grad_circle.RotatedRect;

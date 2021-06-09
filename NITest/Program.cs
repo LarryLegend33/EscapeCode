@@ -148,7 +148,7 @@ namespace NITest
             Mat maxproj_cv = new Mat(framesize, Emgu.CV.CvEnum.DepthType.Cv8U, numchannels);
             AutoResetEvent event1 = new AutoResetEvent(true);
             AutoResetEvent event2 = new AutoResetEvent(false);
-            MCvMoments COM = new MCvMoments();
+            MCvMoments COM= new MCvMoments();
             byte[,] data_2D = new byte[frameHeight, frameWidth];
             byte[,] data_2D_roi = new byte[roidim, roidim];
             byte[,] imagemode_nobarrier = new byte[frameHeight, frameWidth];
@@ -645,7 +645,7 @@ namespace NITest
         static List<ContourProperties> BarrierLocations(Mat image_raw, Mat background)
         {
             int minArea = 1000;
-            int maxArea = 50000;
+            int maxArea = 600000;
             Size frsize = new Size(image_raw.Width, image_raw.Height);
             Mat image = new Mat(frsize, Emgu.CV.CvEnum.DepthType.Cv8U, 1);
 
